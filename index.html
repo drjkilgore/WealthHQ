@@ -499,7 +499,7 @@ const MODS = {
       {l:"Phone",v:r=>`<span class="mono">${esc(r.phone||"—")}</span>`}]
   }
 };
-const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots","plaid_items"];
+const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots","plaid_items","invites"];
 
 /* ---------- payoff estimate: n = -ln(1 - rB/P) / ln(1+r) ---------- */
 function estPayoff(r){
@@ -612,6 +612,21 @@ async function enterApp(){
   // find or create household
   let { data:mem } = await sb.from(TBL("household_members")).select("household_id").eq("user_id", session.user.id).limit(1);
   if(!mem || !mem.length){
+    // Invited to an existing household? Join it instead of creating a new one.
+    const { data:inv } = await sb.from(TBL("invites")).select("*").ilike("email", session.user.email).limit(1);
+    if(inv && inv.length){
+      const { error:je } = await sb.from(TBL("household_members"))
+        .insert({ household_id:inv[0].household_id, user_id:session.user.id, role:inv[0].role });
+      if(!je){
+        await sb.from(TBL("invites")).delete().eq("id", inv[0].id);
+        HH = inv[0].household_id;
+        const { data:hhRow2 } = await sb.from(TBL("households")).select("name").eq("id",HH).single();
+        hhNameCache = hhRow2 ? hhRow2.name : "My Family Office";
+        await loadAll(); await snapshotToday();
+        $("#app").classList.add("on"); renderRail(); render(); resumePlaidOAuth();
+        return;
+      }
+    }
     const { data:hh, error:e1 } = await sb.from(TBL("households"))
       .insert({ name:"My Family Office", created_by:session.user.id }).select().single();
     if(e1){ toast("Setup error: "+e1.message); return; }
@@ -1326,7 +1341,22 @@ function renderSettings(){
       <div style="display:flex;gap:10px"><input id="hhName" value="${esc(hhNameCache||"My Family Office")}">
       <button class="btn" onclick="saveHH()">Save</button></div>
       <div style="margin-top:16px;font-size:13px;color:var(--mute)">Signed in as <b style="color:var(--text)">${esc(session.user.email)}</b></div>
-      <button class="btn ghost sm" style="margin-top:10px" onclick="sb.auth.signOut()">Sign out</button>
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+        <label>Invite a member</label>
+        <div style="display:flex;gap:8px">
+          <input id="invEmail" type="email" placeholder="barbara@example.com" style="flex:1">
+          <select id="invRole" style="width:110px"><option value="admin">Admin</option><option value="advisor">Advisor</option><option value="viewer">Viewer</option></select>
+          <button class="btn" onclick="inviteMember()">Invite</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--dim);margin-top:6px">They create an account with this exact email and land in your household automatically — all data shared.</div>
+        ${(DB.invites||[]).length? `<div style="margin-top:10px">${(DB.invites||[]).map(i=>`
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0">
+            <span class="pill">pending</span> ${esc(i.email)} · ${esc(i.role)}
+            <div class="spacer"></div>
+            <button class="btn sm ghost danger" onclick="revokeInvite('${i.id}')">Revoke</button>
+          </div>`).join("")}</div>`:""}
+      </div>
+      <button class="btn ghost sm" style="margin-top:12px" onclick="sb.auth.signOut()">Sign out</button>
     </div>
     <div class="card"><h3>Security</h3>
       <div style="font-size:13.5px;color:var(--mute);line-height:1.7">
@@ -1494,7 +1524,11 @@ async function startMFAEnroll(){
   }
   window._enrollFactorId = data.id;
   const secret = (data.totp && data.totp.secret) || "";
-  const uri = (data.totp && data.totp.uri) || ("otpauth://totp/WealthHQ?secret="+secret+"&issuer=WealthHQ");
+  // Rebuild the label so authenticators show "WealthHQ", not the Supabase project's site name.
+  // Only the secret matters for code verification; issuer/label are display-only.
+  const uri = secret
+    ? "otpauth://totp/" + encodeURIComponent("WealthHQ ("+(session.user.email||"account")+")") + "?secret=" + secret + "&issuer=" + encodeURIComponent("WealthHQ")
+    : (data.totp && data.totp.uri) || "";
   const prettySecret = secret.replace(/(.{4})/g,"$1 ").trim();
   $("#modalHost").innerHTML = `<div class="overlay" onclick="if(event.target===this)cancelMFAEnroll()">
     <div class="modal" style="width:440px">
@@ -1534,6 +1568,20 @@ async function disableMFA(){
   const { data } = await sb.auth.mfa.listFactors();
   for(const f of ((data && data.totp) || [])){ await sb.auth.mfa.unenroll({ factorId: f.id }); }
   render(); toast("Two-factor disabled");
+}
+
+async function inviteMember(){
+  const email = $("#invEmail").value.trim().toLowerCase();
+  const role = $("#invRole").value;
+  if(!email || !email.includes("@")){ toast("Enter a valid email"); return; }
+  const { error } = await sb.from(TBL("invites")).insert({ household_id:HH, email, role });
+  if(error){ toast("Error: "+error.message); return; }
+  await reload("invites"); render();
+  toast("Invite ready — have them create an account with "+email);
+}
+async function revokeInvite(id){
+  await sb.from(TBL("invites")).delete().eq("id",id);
+  await reload("invites"); render(); toast("Invite revoked");
 }
 
 /* ---------- go ---------- */
