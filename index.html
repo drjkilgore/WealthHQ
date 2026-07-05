@@ -498,8 +498,18 @@ const MODS = {
       {l:"Email",v:r=>esc(r.email||"—")},
       {l:"Phone",v:r=>`<span class="mono">${esc(r.phone||"—")}</span>`}]
   }
+,
+  budgets: {
+    table:"budgets", title:"Budgets", singular:"budget line", icon:IC.rep,
+    fields:[
+      {k:"category",l:"Category",t:"text",req:1},
+      {k:"scope",l:"Scope",t:"select",opts:()=>["Personal"].concat((DB.businesses||[]).map(b=>b.name)),req:1},
+      {k:"monthly_limit",l:"Monthly budget",t:"money",req:1},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    nameField:"category"
+  }
 };
-const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots","plaid_items","invites","qb_connections"];
+const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots","plaid_items","invites","qb_connections","budgets"];
 
 /* ---------- payoff estimate: n = -ln(1 - rB/P) / ln(1+r) ---------- */
 function estPayoff(r){
@@ -699,6 +709,7 @@ const NAV = [
   {k:"goals",l:"Goals",i:IC.goal},
   {k:"insurance",l:"Insurance",i:IC.ins},
   {k:"estate",l:"Estate",i:IC.est},
+  {k:"budgets",l:"Budgets",i:IC.rep},
   {k:"transactions",l:"Transactions",i:IC.tx},
   {sec:"Office"},
   {k:"vault",l:"Document Vault",i:IC.doc},
@@ -912,6 +923,7 @@ function renderModule(key){
   else if(key==="events") body=eventCards(rows);
   else if(key==="goals") body=goalCards(rows);
   else if(key==="holdings") body=holdingsView(rows,m);
+  else if(key==="budgets") body=budgetsView(rows);
   else body=tableView(key,m,rows);
   return topbar(m.title, total!==null?`Total ${fmt$(total)}`:"", add) + body;
 }
@@ -1024,6 +1036,65 @@ function goalCards(rows){
   }).join("")+`</div>`;
 }
 
+/* ---------- Budgets view ---------- */
+function monthSpent(category){
+  const ym = today().slice(0,7);
+  return (DB.transactions||[])
+    .filter(t=>t.tx_type==="Expense" && String(t.tx_date).startsWith(ym)
+            && String(t.category||"").trim().toLowerCase() === String(category).trim().toLowerCase())
+    .reduce((s,t)=>s+n(t.amount),0);
+}
+function budgetsView(rows){
+  if(!rows.length) return `<div class="empty"><b>No budgets yet</b>Add a budget line — Personal lines track against this month's Transactions by category; business lines track against the company's expense run-rate from QuickBooks.</div>`;
+  const monthName = new Date().toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  const groups = {};
+  rows.forEach(r=>{ (groups[r.scope||"Personal"]=groups[r.scope||"Personal"]||[]).push(r); });
+  const order = ["Personal"].concat(Object.keys(groups).filter(g=>g!=="Personal").sort());
+  return order.filter(g=>groups[g]).map(g=>{
+    const rs = groups[g];
+    const totLimit = rs.reduce((s,r)=>s+n(r.monthly_limit),0);
+    let header, lines;
+    if(g==="Personal"){
+      const totSpent = rs.reduce((s,r)=>s+monthSpent(r.category),0);
+      header = groupBar(g+" — "+monthName, totSpent, totLimit);
+      lines = rs.map(r=>{ const spent=monthSpent(r.category); return lineBar(r, r.category, spent, n(r.monthly_limit),
+        spent===0? "No expenses logged this month — log Transactions with category \""+esc(r.category)+"\"" : null); }).join("");
+    } else {
+      const biz = (DB.businesses||[]).find(b=>b.name===g);
+      const runRate = biz? n(biz.expenses_ttm)/12 : 0;
+      header = groupBar(g+" — monthly run-rate vs total budget", runRate, totLimit,
+        "Run-rate = expenses (TTM) ÷ 12 from the business card"+(biz&&biz.expenses_ttm?"":" — sync QuickBooks to populate"));
+      lines = rs.map(r=>lineBar(r, r.category, null, n(r.monthly_limit),
+        "Per-category business actuals arrive with QuickBooks P&L detail (future upgrade)")).join("");
+    }
+    return `<div class="grp">${esc(g)} <span class="mono">${fmt$(totLimit)}/mo budgeted</span></div>
+      <div class="card">${header}${lines}</div>`;
+  }).join("");
+}
+function groupBar(label, actual, limit, note){
+  const pct = limit? Math.min(100, actual/limit*100) : 0;
+  const over = limit && actual>limit;
+  return `<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:600">
+      <span>${esc(label)}</span>
+      <span class="mono ${over?"down":""}">${fmt$(actual)} / ${fmt$(limit)}</span></div>
+    <div class="bar"><i style="width:${pct}%;${over?"background:var(--down)":""}"></i></div>
+    ${note?`<div style="font-size:11.5px;color:var(--dim)">${note}</div>`:""}
+  </div>`;
+}
+function lineBar(r, label, actual, limit, note){
+  const has = actual!==null;
+  const pct = has&&limit? Math.min(100, actual/limit*100) : 0;
+  const over = has && limit && actual>limit;
+  return `<div style="padding:8px 0;cursor:pointer" onclick="openForm('budgets','${r.id}')">
+    <div style="display:flex;justify-content:space-between;font-size:13px">
+      <span>${esc(label)}</span>
+      <span class="mono ${over?"down":""}">${has? fmt$(actual)+" / ":""}${fmt$(limit)}${over?" · over":""}</span></div>
+    ${has?`<div class="bar" style="margin:6px 0 2px"><i style="width:${pct}%;${over?"background:var(--down)":""}"></i></div>`:""}
+    ${note?`<div style="font-size:11px;color:var(--dim)">${note}</div>`:""}
+  </div>`;
+}
+
 /* ---------- Investments view (table + charts) ---------- */
 function holdingsView(rows,m){
   if(!rows.length) return emptyState(m);
@@ -1058,7 +1129,8 @@ function openForm(key,id){
     const v=row? row[fl.k]:"";
     const base=`id="f_${fl.k}"`;
     let input;
-    if(fl.t==="select") input=`<select ${base}>${(fl.opts||[]).map(o=>`<option ${v===o?"selected":""}>${o}</option>`).join("")}</select>`;
+    if(fl.t==="select"){ const opts = (typeof fl.opts==="function")? fl.opts() : (fl.opts||[]);
+      input=`<select ${base}>${opts.map(o=>`<option ${v===o?"selected":""}>${o}</option>`).join("")}</select>`; }
     else if(fl.t==="area") input=`<textarea ${base}>${esc(v)}</textarea>`;
     else if(fl.t==="date") input=`<input type="date" ${base} value="${v||""}">`;
     else if(fl.t==="money"||fl.t==="num") input=`<input type="number" step="any" inputmode="decimal" ${base} value="${v??""}" placeholder="${fl.t==="money"?"0.00":"0"}">`;
