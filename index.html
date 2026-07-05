@@ -212,8 +212,8 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 /* ============================================================
    WealthHQ — configuration
    ============================================================ */
-const SUPABASE_URL = "https://msojmpxesbyegbxloday.supabase.co";        // e.g. https://xxxx.supabase.co
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zb2ptcHhlc2J5ZWdieGxvZGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxMzQ5NTgsImV4cCI6MjA5NTcxMDk1OH0.SBfypZfTcR5NO8q76ImnGug7WpWJnOgAt1kWZYPqAbo";
+const SUPABASE_URL = "YOUR_SUPABASE_URL";        // e.g. https://xxxx.supabase.co
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 const AI_ENDPOINT = "/.netlify/functions/ai-advisor";
 const TBL = t => "whq_" + t;            // all WealthHQ tables are namespaced
 const VAULT_BUCKET = "whq-vault";
@@ -1477,6 +1477,15 @@ async function mfaStatus(){
     return (data && (data.totp||[]).some(x=>x.status==="verified"));
   }catch(e){ return false; }
 }
+function loadQRLib(){
+  return new Promise((res,rej)=>{
+    if(window.QRCode) return res();
+    const sc=document.createElement("script");
+    sc.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    sc.onload=res; sc.onerror=()=>rej(new Error("Could not load QR library"));
+    document.head.appendChild(sc);
+  });
+}
 async function startMFAEnroll(){
   const { data, error } = await sb.auth.mfa.enroll({ factorType:"totp", friendlyName:"WealthHQ" });
   if(error){
@@ -1484,18 +1493,27 @@ async function startMFAEnroll(){
     return;
   }
   window._enrollFactorId = data.id;
+  const secret = (data.totp && data.totp.secret) || "";
+  const uri = (data.totp && data.totp.uri) || ("otpauth://totp/WealthHQ?secret="+secret+"&issuer=WealthHQ");
+  const prettySecret = secret.replace(/(.{4})/g,"$1 ").trim();
   $("#modalHost").innerHTML = `<div class="overlay" onclick="if(event.target===this)cancelMFAEnroll()">
     <div class="modal" style="width:440px">
       <h2>Enable two-factor</h2>
-      <p style="font-size:13.5px;color:var(--mute);margin-bottom:14px">Scan with Google Authenticator, 1Password, Authy, or any TOTP app, then enter the code it shows.</p>
-      <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;justify-content:center">${data.totp.qr_code}</div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin:10px 0 16px;word-break:break-all">Manual key: ${esc(data.totp.secret)}</div>
+      <p style="font-size:13.5px;color:var(--mute);margin-bottom:14px">Scan with Google Authenticator, 1Password, Authy, or any TOTP app — or add it manually with the key below (choose "time-based"). Then enter the code it shows.</p>
+      <div id="qrHost" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;justify-content:center;min-height:240px;align-items:center"></div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--mute);margin:10px 0 16px;text-align:center;letter-spacing:.05em">Manual key: <b style="color:var(--text)">${esc(prettySecret)}</b></div>
       <label>6-digit code</label>
       <input id="enrollCode" inputmode="numeric" maxlength="6" placeholder="123456" onkeydown="if(event.key==='Enter')verifyMFAEnroll()">
       <div class="mfoot">
         <button class="btn ghost" onclick="cancelMFAEnroll()">Cancel</button>
         <button class="btn gold" onclick="verifyMFAEnroll()">Turn on</button>
       </div></div></div>`;
+  try{
+    await loadQRLib();
+    new QRCode(document.getElementById("qrHost"), { text: uri, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  }catch(e){
+    document.getElementById("qrHost").innerHTML = '<div style="color:#5c6a61;font-size:13px;padding:20px;text-align:center">QR unavailable — use the manual key below.</div>';
+  }
 }
 async function cancelMFAEnroll(){
   if(window._enrollFactorId){ try{ await sb.auth.mfa.unenroll({ factorId: window._enrollFactorId }); }catch(e){} }
