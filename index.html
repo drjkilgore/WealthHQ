@@ -637,6 +637,7 @@ async function enterApp(){
   await snapshotToday();
   $("#app").classList.add("on");
   renderRail(); render();
+  resumePlaidOAuth();
 }
 
 async function loadAll(){
@@ -1369,6 +1370,31 @@ async function pfn(name, body){
   if(!r.ok || j.error) throw new Error(j.error||("HTTP "+r.status));
   return j;
 }
+async function plaidOnSuccess(public_token, meta){
+  try{
+    sessionStorage.removeItem("whq_plaid_link_token");
+    toast("Linking "+((meta.institution&&meta.institution.name)||"bank")+"…");
+    await pfn("plaid-exchange",{ public_token, institution_name: meta.institution? meta.institution.name : "Bank" });
+    await syncBanks();
+  }catch(e){ toast("Link failed: "+e.message); }
+}
+/* If an OAuth bank (e.g., Chase) redirected back here, resume the Link session */
+async function resumePlaidOAuth(){
+  if(!location.search.includes("oauth_state_id=")) return;
+  const token = sessionStorage.getItem("whq_plaid_link_token");
+  const returnUrl = window.location.href;
+  history.replaceState({}, "", location.pathname);   // clean the URL
+  if(!token){ toast("Bank link session expired — click Connect a bank again."); return; }
+  try{
+    await loadPlaidScript();
+    window.Plaid.create({
+      token,
+      receivedRedirectUri: returnUrl,
+      onSuccess: plaidOnSuccess,
+      onExit: (err)=>{ if(err) toast("Bank link closed: "+(err.display_message||err.error_code||"")); }
+    }).open();
+  }catch(e){ toast("Error resuming bank link: "+e.message); }
+}
 function loadPlaidScript(){
   return new Promise((res,rej)=>{
     if(window.Plaid) return res();
@@ -1383,15 +1409,10 @@ async function connectBank(){
     toast("Opening secure bank link…");
     await loadPlaidScript();
     const { link_token } = await pfn("plaid-link-token",{});
+    sessionStorage.setItem("whq_plaid_link_token", link_token);   // needed to resume after OAuth banks (Chase, etc.)
     window.Plaid.create({
       token: link_token,
-      onSuccess: async (public_token, meta)=>{
-        try{
-          toast("Linking "+((meta.institution&&meta.institution.name)||"bank")+"…");
-          await pfn("plaid-exchange",{ public_token, institution_name: meta.institution? meta.institution.name : "Bank" });
-          await syncBanks();
-        }catch(e){ toast("Link failed: "+e.message); }
-      },
+      onSuccess: plaidOnSuccess,
       onExit: (err)=>{ if(err) toast("Bank link closed: "+(err.display_message||err.error_code||"")); }
     }).open();
   }catch(e){ toast("Error: "+e.message); }
