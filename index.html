@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>WealthHQ — Family Office OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --ink:#0a0d13; --ink2:#0e131c; --panel:rgba(255,255,255,.04); --panel2:rgba(255,255,255,.07);
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  --text:#edeff4; --mute:#8b93a7; --dim:#5b6274;
+  --gold:#e2c078; --gold-soft:rgba(226,192,120,.14);
+  --cobalt:#5b8cff; --up:#3fbf7f; --down:#e0566b;
+  --r:18px; --rs:12px;
+  --disp:'Fraunces',serif; --ui:'Instrument Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--ink);color:var(--text);font-family:var(--ui);font-size:15px;line-height:1.5;
+  background-image:radial-gradient(1200px 700px at 85% -10%,rgba(91,140,255,.08),transparent 60%),
+                   radial-gradient(900px 600px at -10% 100%,rgba(226,192,120,.06),transparent 55%);}
+::selection{background:var(--gold-soft)}
+a{color:var(--cobalt);text-decoration:none}
+button{font-family:var(--ui);cursor:pointer}
+input,select,textarea{font-family:var(--ui);font-size:14px;color:var(--text);background:rgba(255,255,255,.05);
+  border:1px solid var(--line);border-radius:10px;padding:9px 12px;width:100%;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--gold)}
+select option{background:#141924;color:var(--text)}
+textarea{resize:vertical;min-height:70px}
+label{display:block;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:0 0 5px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)}
+.hidden{display:none!important}
+
+/* ---------- App shell ---------- */
+#app{display:none;height:100vh}
+#app.on{display:grid;grid-template-columns:232px 1fr}
+nav.rail{border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;background:rgba(10,13,19,.7);backdrop-filter:blur(14px)}
+.brand{font-family:var(--disp);font-weight:600;font-size:21px;padding:4px 10px 16px;letter-spacing:.01em}
+.brand em{color:var(--gold);font-style:normal}
+.brand small{display:block;font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.22em;text-transform:uppercase;margin-top:2px}
+.navsec{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);padding:14px 10px 5px}
+.navitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;color:var(--mute);
+  background:none;border:none;width:100%;text-align:left;font-size:13.5px;font-weight:500;transition:all .12s}
+.navitem:hover{background:var(--panel);color:var(--text)}
+.navitem.active{background:var(--gold-soft);color:var(--gold)}
+.navitem svg{width:16px;height:16px;flex:none;opacity:.85}
+main{overflow-y:auto;padding:26px 34px 60px;scroll-behavior:smooth}
+
+/* ---------- Topbar ---------- */
+.topbar{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+.topbar h1{font-family:var(--disp);font-weight:500;font-size:26px}
+.topbar .sub{color:var(--mute);font-size:13px}
+.spacer{flex:1}
+.searchbox{position:relative;width:280px}
+.searchbox input{padding-left:34px;border-radius:12px}
+.searchbox svg{position:absolute;left:11px;top:10px;width:15px;height:15px;color:var(--dim)}
+.avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--cobalt));
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#0a0d13;border:none}
+
+/* ---------- Buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:11px;border:1px solid var(--line2);
+  background:var(--panel2);color:var(--text);font-size:13.5px;font-weight:600;transition:all .15s}
+.btn:hover{background:rgba(255,255,255,.11);transform:translateY(-1px)}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#141005}
+.btn.gold:hover{background:#ecd08f}
+.btn.ghost{background:none;border-color:transparent;color:var(--mute)}
+.btn.ghost:hover{color:var(--text);background:var(--panel)}
+.btn.sm{padding:5px 11px;font-size:12.5px;border-radius:8px}
+.btn.danger{color:var(--down)}
+
+/* ---------- Cards / glass ---------- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;
+  backdrop-filter:blur(12px);transition:border-color .2s}
+.card:hover{border-color:var(--line2)}
+.card h3{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:10px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1180px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){#app.on{grid-template-columns:1fr}nav.rail{display:none}main{padding:18px}
+  .g2,.g3,.g4{grid-template-columns:1fr}.searchbox{display:none}}
+
+/* ---------- Ledger hero (signature) ---------- */
+.hero{padding:30px 28px 24px;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,rgba(226,192,120,.07),rgba(91,140,255,.05) 60%,transparent);
+  border:1px solid var(--line);border-radius:22px;backdrop-filter:blur(14px)}
+.hero .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold)}
+.hero .nw{font-family:var(--disp);font-weight:500;font-size:clamp(44px,6vw,72px);line-height:1.05;margin:8px 0 4px;letter-spacing:-.01em}
+.hero .ledger{font-family:var(--mono);font-size:13px;color:var(--mute);display:flex;gap:22px;flex-wrap:wrap;margin-top:10px}
+.hero .ledger b{color:var(--text);font-weight:500}
+.hero .deltas{display:flex;gap:16px;margin-top:14px;flex-wrap:wrap}
+.hero .delta{font-family:var(--mono);font-size:12.5px;padding:5px 11px;border-radius:999px;border:1px solid var(--line)}
+.hero canvas{position:absolute;right:24px;bottom:20px;opacity:.9}
+@media(max-width:900px){.hero canvas{display:none}}
+.rule{height:2px;width:110px;background:linear-gradient(90deg,var(--gold),var(--cobalt));border-radius:2px;margin-top:16px}
+
+/* ---------- KPI ---------- */
+.kpi .v{font-family:var(--mono);font-size:24px;font-weight:500;margin-top:2px}
+.kpi .d{font-family:var(--mono);font-size:12px;margin-top:5px;color:var(--mute)}
+
+/* ---------- Tables ---------- */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);font-weight:600;text-align:left;
+  padding:8px 12px;border-bottom:1px solid var(--line)}
+td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
+tr.row:hover td{background:rgba(255,255,255,.025);cursor:pointer}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--panel2);color:var(--mute)}
+.grp{font-family:var(--disp);font-size:16px;font-weight:500;margin:22px 0 10px;display:flex;align-items:baseline;gap:10px}
+.grp .mono{font-size:12.5px;color:var(--mute)}
+.empty{padding:40px;text-align:center;color:var(--mute);border:1px dashed var(--line2);border-radius:var(--r)}
+.empty b{display:block;color:var(--text);font-family:var(--disp);font-size:17px;font-weight:500;margin-bottom:6px}
+
+/* ---------- Progress ---------- */
+.bar{height:8px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin:8px 0 6px}
+.bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--gold),var(--cobalt));transition:width .8s cubic-bezier(.2,.8,.2,1)}
+
+/* ---------- Modal ---------- */
+.overlay{position:fixed;inset:0;background:rgba(5,7,11,.72);backdrop-filter:blur(6px);z-index:50;
+  display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;animation:fade .18s}
+.modal{background:#11151f;border:1px solid var(--line2);border-radius:20px;width:640px;max-width:100%;
+  max-height:88vh;overflow-y:auto;padding:26px;animation:pop .22s cubic-bezier(.2,.9,.3,1.2)}
+.modal h2{font-family:var(--disp);font-weight:500;font-size:21px;margin-bottom:18px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fgrid .full{grid-column:1/-1}
+@media(max-width:560px){.fgrid{grid-template-columns:1fr}}
+.mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+@keyframes fade{from{opacity:0}} @keyframes pop{from{opacity:0;transform:translateY(14px) scale(.98)}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}}
+.view{animation:rise .3s cubic-bezier(.2,.8,.2,1)}
+
+/* ---------- Chat ---------- */
+.chat{display:flex;flex-direction:column;height:calc(100vh - 170px);min-height:420px}
+.msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:6px 2px 16px}
+.msg{max-width:78%;padding:12px 15px;border-radius:16px;font-size:14px;white-space:pre-wrap}
+.msg.u{align-self:flex-end;background:var(--gold-soft);border:1px solid rgba(226,192,120,.25)}
+.msg.a{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.chip{font-size:12px;padding:6px 12px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--mute)}
+.chip:hover{color:var(--gold);border-color:var(--gold)}
+.chatin{display:flex;gap:10px}
+
+/* ---------- Auth ---------- */
+#auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.authcard{width:400px;max-width:100%;padding:34px;background:var(--panel);border:1px solid var(--line2);
+  border-radius:24px;backdrop-filter:blur(16px)}
+.authcard h1{font-family:var(--disp);font-weight:500;font-size:30px;margin-bottom:4px}
+.authcard p{color:var(--mute);font-size:13.5px;margin-bottom:22px}
+.authcard .fld{margin-bottom:14px}
+.authmsg{font-size:13px;margin-top:12px;color:var(--mute)}
+.authmsg.err{color:var(--down)}
+
+/* ---------- Toast ---------- */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#171c28;border:1px solid var(--line2);
+  padding:11px 20px;border-radius:12px;font-size:13.5px;z-index:99;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.on{opacity:1}
+
+/* ---------- Print / reports ---------- */
+.report-doc{background:#fff;color:#111;border-radius:14px;padding:36px;font-size:13px}
+.report-doc h2{font-family:var(--disp);font-size:24px;margin-bottom:2px}
+.report-doc .rsub{color:#666;font-family:var(--mono);font-size:11px;margin-bottom:20px}
+.report-doc table{font-size:12.5px}
+.report-doc th{color:#888;border-bottom:1px solid #ddd}
+.report-doc td{border-bottom:1px solid #eee;color:#111}
+.report-doc .tot td{border-top:2px solid #111;font-weight:700}
+@media print{
+  body{background:#fff}
+  nav.rail,.topbar,.no-print,#toast{display:none!important}
+  #app.on{grid-template-columns:1fr}
+  main{padding:0}
+  .report-doc{border-radius:0;padding:0}
+}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="setup" class="hidden" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="authcard" style="width:560px">
+    <h1>Wealth<em style="color:var(--gold);font-style:normal">HQ</em> setup</h1>
+    <p>Two values are needed before first launch. Open <b>index.html</b> in the GitHub web editor and set <span class="mono">SUPABASE_URL</span> and <span class="mono">SUPABASE_ANON_KEY</span> near the top of the script (Supabase Dashboard → Project Settings → API). Then run <span class="mono">supabase/schema.sql</span> in the SQL Editor and redeploy.</p>
+  </div>
+</div>
+
+<div id="auth" class="hidden">
+  <div class="authcard">
+    <h1>Wealth<em style="color:var(--gold);font-style:normal">HQ</em></h1>
+    <p>Your family office operating system.</p>
+    <div class="fld"><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"></div>
+    <div class="fld"><label>Password</label><input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn gold" style="flex:1;justify-content:center" onclick="signIn()">Sign in</button>
+      <button class="btn" style="flex:1;justify-content:center" onclick="signUp()">Create account</button>
+    </div>
+    <div id="authMsg" class="authmsg"></div>
+  </div>
+</div>
+
+<div id="app">
+  <nav class="rail" id="rail"></nav>
+  <main id="main"></main>
+</div>
+
+<div id="toast"></div>
+<div id="modalHost"></div>
+<script>
+/* ============================================================
+   WealthHQ — configuration
+   ============================================================ */
+const SUPABASE_URL = "YOUR_SUPABASE_URL";        // e.g. https://xxxx.supabase.co
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const AI_ENDPOINT = "/.netlify/functions/ai-advisor";
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n = v => (v === null || v === undefined || v === "" || isNaN(+v)) ? 0 : +v;
+const fmt$ = (v, dec=0) => (v<0?"-":"") + "$" + Math.abs(n(v)).toLocaleString("en-US",{minimumFractionDigits:dec,maximumFractionDigits:dec});
+const fmtPct = v => (n(v)>=0?"+":"") + n(v).toFixed(1) + "%";
+const fmtDate = d => d ? new Date(d + (String(d).length===10?"T12:00:00":"")).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
+const today = () => new Date().toISOString().slice(0,10);
+const cls = v => n(v) >= 0 ? "up" : "down";
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("on"),2600);}
+function yearsBetween(a,b){return Math.max((new Date(b)-new Date(a))/31557600000, .003);}
+function annualGrowth(pp, cv, pd){ if(!pp||!pd||!cv) return null; const y=yearsBetween(pd, today()); return (Math.pow(cv/pp, 1/y)-1)*100; }
+
+/* ---------- state ---------- */
+let sb, session=null, HH=null;   // HH = household id
+const DB = {};                    // table -> rows
+let view = "home", viewArg = null;
+const charts = {};
+let aiHistory = [];
+
+/* ---------- icons ---------- */
+const IC = {
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3z"/></svg>',
+  worth:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  debt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l6 6 4-4 8 8"/><path d="M15 17h6v-6"/></svg>',
+  home2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="16" height="12" rx="1"/><path d="M2 9l10-6 10 6"/></svg>',
+  car:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 16l1.5-5h11L19 16"/><rect x="3" y="16" width="18" height="4" rx="1.5"/><circle cx="7" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>',
+  inv:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6.5 4"/></svg>',
+  biz:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M9 8V5h6v3M4 13h16"/></svg>',
+  evt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  goal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>',
+  ins:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>',
+  est:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 21h14M5 7l7-4 7 4M4 7l-2 6h6l-2-6zm16 0l-2 6h6l-2-6z" transform="scale(.86) translate(1.8 1.8)"/></svg>',
+  doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l5 5v13H6z"/><path d="M14 3v6h6"/></svg>',
+  rep:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V9M12 21V3M19 21v-8"/></svg>',
+  ai:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6z"/><path d="M19 15l.9 2.6L22 18l-2.1.7L19 21l-.9-2.3L16 18l2.1-.4z"/></svg>',
+  tx:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10h13l-4-4M17 14H4l4 4"/></svg>',
+  set:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="width:14px;height:14px"><path d="M12 5v14M5 12h14"/></svg>'
+};
+
+/* ============================================================
+   Module registry — drives generic CRUD for every section
+   ============================================================ */
+const ASSET_CATS = ["Checking","Savings","Money Market","Brokerage","401(k)","Roth IRA","Traditional IRA","Crypto","Precious Metals","Jewelry","Furniture","Art","Collectibles","Luxury Goods","Domains","Patents","Private Investments","Other"];
+const CASH_CATS = ["Checking","Savings","Money Market"];
+const INV_ASSET_CATS = ["Brokerage","401(k)","Roth IRA","Traditional IRA","Crypto","Precious Metals","Private Investments"];
+const LIAB_CATS = ["Mortgage","Business Loan","Vehicle Loan","Credit Card","Personal Loan","Taxes","Line of Credit","Other Debt"];
+const DOC_CATS = ["Personal","Business","Insurance","Taxes","Legal","Real Estate","Vehicles","Investments","Receipts","Photos"];
+
+const MODS = {
+  assets: {
+    table:"assets", title:"Personal Net Worth", singular:"asset", icon:IC.worth, groupBy:"category",
+    fields:[
+      {k:"name",l:"Name",t:"text",req:1},
+      {k:"category",l:"Category",t:"select",opts:ASSET_CATS,req:1},
+      {k:"purchase_date",l:"Purchase date",t:"date"},
+      {k:"purchase_price",l:"Purchase price",t:"money"},
+      {k:"cost_basis",l:"Cost basis",t:"money"},
+      {k:"current_value",l:"Current value",t:"money",req:1},
+      {k:"beneficiary",l:"Beneficiary",t:"text"},
+      {k:"insurance",l:"Insurance",t:"text"},
+      {k:"photo_url",l:"Photo URL",t:"text"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Asset",v:r=>esc(r.name)},
+      {l:"Purchased",v:r=>fmtDate(r.purchase_date)},
+      {l:"Cost",num:1,v:r=>r.purchase_price?fmt$(r.purchase_price):"—"},
+      {l:"Value",num:1,v:r=>fmt$(r.current_value)},
+      {l:"Appreciation",num:1,v:r=>{const g=n(r.current_value)-n(r.purchase_price||r.cost_basis); return r.purchase_price||r.cost_basis?`<span class="${cls(g)}">${fmt$(g)}</span>`:"—";}},
+      {l:"Annual",num:1,v:r=>{const g=annualGrowth(n(r.purchase_price),n(r.current_value),r.purchase_date); return g===null?"—":`<span class="${cls(g)}">${fmtPct(g)}</span>`;}}],
+    sumField:"current_value"
+  },
+  liabilities: {
+    table:"liabilities", title:"Liabilities", singular:"liability", icon:IC.debt, groupBy:"category",
+    fields:[
+      {k:"name",l:"Name",t:"text",req:1},
+      {k:"category",l:"Category",t:"select",opts:LIAB_CATS,req:1},
+      {k:"balance",l:"Remaining balance",t:"money",req:1},
+      {k:"interest_rate",l:"Interest rate %",t:"num"},
+      {k:"original_principal",l:"Original principal",t:"money"},
+      {k:"monthly_payment",l:"Monthly payment",t:"money"},
+      {k:"due_day",l:"Due day (1–31)",t:"num"},
+      {k:"payoff_date",l:"Payoff date",t:"date"},
+      {k:"interest_paid",l:"Interest paid to date",t:"money"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Liability",v:r=>esc(r.name)},
+      {l:"Rate",num:1,v:r=>r.interest_rate?n(r.interest_rate).toFixed(2)+"%":"—"},
+      {l:"Balance",num:1,v:r=>`<span class="down">${fmt$(r.balance)}</span>`},
+      {l:"Payment/mo",num:1,v:r=>r.monthly_payment?fmt$(r.monthly_payment):"—"},
+      {l:"Payoff",v:r=>r.payoff_date?fmtDate(r.payoff_date):estPayoff(r)},
+      {l:"Interest paid",num:1,v:r=>r.interest_paid?fmt$(r.interest_paid):"—"}],
+    sumField:"balance"
+  },
+  properties: {
+    table:"properties", title:"Real Estate", singular:"property", icon:IC.home2,
+    fields:[
+      {k:"name",l:"Property name",t:"text",req:1},
+      {k:"address",l:"Address",t:"text"},
+      {k:"purchase_date",l:"Purchase date",t:"date"},
+      {k:"purchase_price",l:"Purchase price",t:"money"},
+      {k:"current_value",l:"Current value",t:"money",req:1},
+      {k:"mortgage_balance",l:"Mortgage balance",t:"money"},
+      {k:"interest_rate",l:"Mortgage rate %",t:"num"},
+      {k:"rent_monthly",l:"Rent / mo",t:"money"},
+      {k:"expenses_monthly",l:"Operating exp / mo",t:"money"},
+      {k:"insurance_annual",l:"Insurance / yr",t:"money"},
+      {k:"taxes_annual",l:"Property taxes / yr",t:"money"},
+      {k:"maintenance_annual",l:"Maintenance / yr",t:"money"},
+      {k:"photo_url",l:"Photo URL",t:"text"},
+      {k:"notes",l:"Notes / repairs",t:"area",full:1}],
+    cardView:true, sumField:"current_value"
+  },
+  vehicles: {
+    table:"vehicles", title:"Vehicles", singular:"vehicle", icon:IC.car, groupBy:"vtype",
+    fields:[
+      {k:"name",l:"Vehicle",t:"text",req:1},
+      {k:"vtype",l:"Type",t:"select",opts:["Car","Boat","Motorcycle","RV","Other"],req:1},
+      {k:"purchase_date",l:"Purchase date",t:"date"},
+      {k:"purchase_price",l:"Purchase price",t:"money"},
+      {k:"current_value",l:"Current value",t:"money",req:1},
+      {k:"loan_balance",l:"Loan balance",t:"money"},
+      {k:"mileage",l:"Mileage",t:"num"},
+      {k:"insurance_annual",l:"Insurance / yr",t:"money"},
+      {k:"maintenance_notes",l:"Maintenance history",t:"area",full:1},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Vehicle",v:r=>esc(r.name)},
+      {l:"Purchased",v:r=>fmtDate(r.purchase_date)},
+      {l:"Cost",num:1,v:r=>r.purchase_price?fmt$(r.purchase_price):"—"},
+      {l:"Value",num:1,v:r=>fmt$(r.current_value)},
+      {l:"Depreciation",num:1,v:r=>{const d=n(r.current_value)-n(r.purchase_price); return r.purchase_price?`<span class="${cls(d)}">${fmt$(d)}</span>`:"—";}},
+      {l:"Loan",num:1,v:r=>r.loan_balance?`<span class="down">${fmt$(r.loan_balance)}</span>`:"—"},
+      {l:"Miles",num:1,v:r=>r.mileage?n(r.mileage).toLocaleString():"—"}],
+    sumField:"current_value"
+  },
+  holdings: {
+    table:"holdings", title:"Investments", singular:"holding", icon:IC.inv, groupBy:"account",
+    fields:[
+      {k:"name",l:"Holding name",t:"text",req:1},
+      {k:"symbol",l:"Ticker / symbol",t:"text"},
+      {k:"account",l:"Account",t:"select",opts:["Brokerage","401(k)","Roth IRA","Traditional IRA","Crypto","Private Equity","HSA","Other"],req:1},
+      {k:"asset_class",l:"Asset class",t:"select",opts:["Stock","ETF","Mutual Fund","Bond","Option","Crypto","Cash","Private Equity"],req:1},
+      {k:"quantity",l:"Quantity",t:"num"},
+      {k:"cost_basis",l:"Cost basis",t:"money"},
+      {k:"current_value",l:"Current value",t:"money",req:1},
+      {k:"dividend_yield",l:"Dividend yield %",t:"num"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Holding",v:r=>`${esc(r.name)}${r.symbol?` <span class="pill mono">${esc(r.symbol)}</span>`:""}`},
+      {l:"Class",v:r=>esc(r.asset_class)},
+      {l:"Qty",num:1,v:r=>r.quantity?(+r.quantity).toLocaleString():"—"},
+      {l:"Basis",num:1,v:r=>r.cost_basis?fmt$(r.cost_basis):"—"},
+      {l:"Value",num:1,v:r=>fmt$(r.current_value)},
+      {l:"Gain",num:1,v:r=>{const g=n(r.current_value)-n(r.cost_basis); return r.cost_basis?`<span class="${cls(g)}">${fmt$(g)} (${fmtPct(g/n(r.cost_basis)*100)})</span>`:"—";}},
+      {l:"Div yield",num:1,v:r=>r.dividend_yield?n(r.dividend_yield).toFixed(2)+"%":"—"}],
+    sumField:"current_value"
+  },
+  businesses: {
+    table:"businesses", title:"Businesses", singular:"business", icon:IC.biz,
+    fields:[
+      {k:"name",l:"Company",t:"text",req:1},
+      {k:"entity_type",l:"Entity type",t:"select",opts:["LLC","S-Corp","C-Corp","Nonprofit","Sole Prop","Partnership"]},
+      {k:"ownership_pct",l:"Ownership %",t:"num"},
+      {k:"revenue_ttm",l:"Revenue (TTM)",t:"money"},
+      {k:"expenses_ttm",l:"Expenses (TTM)",t:"money"},
+      {k:"ebitda",l:"EBITDA (TTM)",t:"money"},
+      {k:"valuation_multiple",l:"Valuation multiple ×",t:"num"},
+      {k:"cash",l:"Cash",t:"money"},
+      {k:"debt",l:"Debt",t:"money"},
+      {k:"accounts_receivable",l:"Accounts receivable",t:"money"},
+      {k:"accounts_payable",l:"Accounts payable",t:"money"},
+      {k:"employees",l:"Employees",t:"num"},
+      {k:"kpis",l:"KPIs",t:"area",full:1},
+      {k:"notes",l:"Notes / contracts",t:"area",full:1}],
+    cardView:true
+  },
+  events: {
+    table:"events", title:"Events", singular:"event", icon:IC.evt,
+    fields:[
+      {k:"name",l:"Event",t:"text",req:1},
+      {k:"event_date",l:"Date",t:"date"},
+      {k:"venue",l:"Venue",t:"text"},
+      {k:"budget",l:"Budget",t:"money"},
+      {k:"projected_revenue",l:"Projected revenue",t:"money"},
+      {k:"actual_revenue",l:"Actual revenue",t:"money"},
+      {k:"ticket_sales",l:"Ticket sales",t:"money"},
+      {k:"vip_sales",l:"VIP sales",t:"money"},
+      {k:"sponsors",l:"Sponsorships",t:"money"},
+      {k:"expenses",l:"Expenses",t:"money"},
+      {k:"attendance",l:"Attendance",t:"num"},
+      {k:"timeline",l:"Timeline (artists, hotels, flights…)",t:"area",full:1},
+      {k:"marketing",l:"Marketing plan",t:"area",full:1},
+      {k:"lessons_learned",l:"Lessons learned",t:"area",full:1},
+      {k:"photo_url",l:"Photo/video link",t:"text"},
+      {k:"notes",l:"Notes / contracts",t:"area",full:1}],
+    cardView:true
+  },
+  goals: {
+    table:"goals", title:"Goals", singular:"goal", icon:IC.goal,
+    fields:[
+      {k:"name",l:"Goal",t:"text",req:1},
+      {k:"metric",l:"Tracks",t:"select",opts:["Net Worth","Debt Payoff","Passive Income","Custom"],req:1},
+      {k:"target_amount",l:"Target amount",t:"money",req:1},
+      {k:"current_amount",l:"Current (Custom/Passive only)",t:"money"},
+      {k:"target_date",l:"Target date",t:"date"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cardView:true
+  },
+  insurance: {
+    table:"insurance_policies", title:"Insurance", singular:"policy", icon:IC.ins, groupBy:"ptype",
+    fields:[
+      {k:"ptype",l:"Type",t:"select",opts:["Life","Auto","Property","Umbrella","Business","Disability","Other"],req:1},
+      {k:"carrier",l:"Carrier",t:"text",req:1},
+      {k:"policy_number",l:"Policy #",t:"text"},
+      {k:"coverage_amount",l:"Coverage",t:"money"},
+      {k:"premium_annual",l:"Premium / yr",t:"money"},
+      {k:"deductible",l:"Deductible",t:"money"},
+      {k:"renewal_date",l:"Renewal date",t:"date"},
+      {k:"beneficiaries",l:"Beneficiaries",t:"text"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Carrier",v:r=>esc(r.carrier)},
+      {l:"Policy #",v:r=>`<span class="mono">${esc(r.policy_number||"—")}</span>`},
+      {l:"Coverage",num:1,v:r=>r.coverage_amount?fmt$(r.coverage_amount):"—"},
+      {l:"Premium/yr",num:1,v:r=>r.premium_annual?fmt$(r.premium_annual):"—"},
+      {l:"Deductible",num:1,v:r=>r.deductible?fmt$(r.deductible):"—"},
+      {l:"Renews",v:r=>{if(!r.renewal_date)return"—";const soon=(new Date(r.renewal_date)-Date.now())<45*864e5;return `<span class="${soon?"down":""}">${fmtDate(r.renewal_date)}</span>`;}},
+      {l:"Beneficiaries",v:r=>esc(r.beneficiaries||"—")}],
+    nameField:"carrier"
+  },
+  estate: {
+    table:"estate_records", title:"Estate", singular:"record", icon:IC.est, groupBy:"rtype",
+    fields:[
+      {k:"rtype",l:"Record type",t:"select",opts:["Trust","Will","Power of Attorney","Medical Directive","Password Vault","Attorney","CPA","Financial Advisor","Beneficiary","Other"],req:1},
+      {k:"name",l:"Name / title",t:"text",req:1},
+      {k:"contact_info",l:"Contact info",t:"text"},
+      {k:"location",l:"Where original is kept",t:"text"},
+      {k:"last_reviewed",l:"Last reviewed",t:"date"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Name",v:r=>esc(r.name)},
+      {l:"Contact",v:r=>esc(r.contact_info||"—")},
+      {l:"Location",v:r=>esc(r.location||"—")},
+      {l:"Reviewed",v:r=>fmtDate(r.last_reviewed)}]
+  },
+  transactions: {
+    table:"transactions", title:"Transactions", singular:"transaction", icon:IC.tx,
+    fields:[
+      {k:"tx_date",l:"Date",t:"date",req:1},
+      {k:"description",l:"Description",t:"text",req:1},
+      {k:"amount",l:"Amount",t:"money",req:1},
+      {k:"tx_type",l:"Type",t:"select",opts:["Income","Expense","Transfer"],req:1},
+      {k:"account",l:"Account",t:"text"},
+      {k:"category",l:"Category",t:"text"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Date",v:r=>fmtDate(r.tx_date)},
+      {l:"Description",v:r=>esc(r.description)},
+      {l:"Account",v:r=>esc(r.account||"—")},
+      {l:"Category",v:r=>`<span class="pill">${esc(r.category||r.tx_type)}</span>`},
+      {l:"Amount",num:1,v:r=>`<span class="${r.tx_type==="Income"?"up":r.tx_type==="Expense"?"down":""}">${r.tx_type==="Expense"?"-":""}${fmt$(r.amount)}</span>`}],
+    nameField:"description", orderBy:"tx_date"
+  },
+  contacts: {
+    table:"contacts", title:"Contacts", singular:"contact", icon:IC.est,
+    fields:[
+      {k:"name",l:"Name",t:"text",req:1},
+      {k:"role",l:"Role",t:"select",opts:["Attorney","CPA","Financial Advisor","Insurance Agent","Banker","Vendor","Other"]},
+      {k:"email",l:"Email",t:"text"},
+      {k:"phone",l:"Phone",t:"text"},
+      {k:"notes",l:"Notes",t:"area",full:1}],
+    cols:[
+      {l:"Name",v:r=>esc(r.name)},
+      {l:"Role",v:r=>`<span class="pill">${esc(r.role||"—")}</span>`},
+      {l:"Email",v:r=>esc(r.email||"—")},
+      {l:"Phone",v:r=>`<span class="mono">${esc(r.phone||"—")}</span>`}]
+  }
+};
+const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots"];
+
+/* ---------- payoff estimate: n = -ln(1 - rB/P) / ln(1+r) ---------- */
+function estPayoff(r){
+  const B=n(r.balance), P=n(r.monthly_payment), i=n(r.interest_rate)/100/12;
+  if(!B||!P) return "—";
+  if(i>0 && P<=B*i) return '<span class="down">payment &lt; interest</span>';
+  const months = i>0 ? Math.log(P/(P-B*i))/Math.log(1+i) : B/P;
+  const d=new Date(); d.setMonth(d.getMonth()+Math.ceil(months));
+  return `~${d.toLocaleDateString("en-US",{month:"short",year:"numeric"})}`;
+}
+
+/* ============================================================
+   Totals engine — single source of truth for every dashboard
+   ============================================================ */
+function totals(){
+  const A=DB.assets||[], L=DB.liabilities||[], P=DB.properties||[], V=DB.vehicles||[], H=DB.holdings||[], B=DB.businesses||[];
+  const sum=(arr,f)=>arr.reduce((s,r)=>s+n(f(r)),0);
+  const cash = sum(A.filter(a=>CASH_CATS.includes(a.category)),a=>a.current_value) + sum(B,b=>0); // business cash stays in equity calc
+  const invAssets = sum(A.filter(a=>INV_ASSET_CATS.includes(a.category)),a=>a.current_value);
+  const investments = sum(H,h=>h.current_value) + invAssets;
+  const otherAssets = sum(A.filter(a=>!CASH_CATS.includes(a.category)&&!INV_ASSET_CATS.includes(a.category)),a=>a.current_value);
+  const realEstate = sum(P,p=>p.current_value);
+  const vehiclesV = sum(V,v=>v.current_value);
+  const bizEquity = sum(B, b=> Math.max(0, (n(b.ebitda)*n(b.valuation_multiple||0) + n(b.cash) - n(b.debt)) * (n(b.ownership_pct||100)/100)));
+  const assetsTotal = cash + investments + otherAssets + realEstate + vehiclesV + bizEquity;
+  const liab = sum(L,l=>l.balance) + sum(P,p=>p.mortgage_balance) + sum(V,v=>v.loan_balance);
+  const monthlyDebtSvc = sum(L,l=>l.monthly_payment);
+  const passiveMonthly = sum(P,p=>n(p.rent_monthly)-n(p.expenses_monthly)-(n(p.taxes_annual)+n(p.insurance_annual)+n(p.maintenance_annual))/12)
+    + sum(H,h=>n(h.current_value)*n(h.dividend_yield)/100/12);
+  return {cash,investments,otherAssets,realEstate,vehicles:vehiclesV,bizEquity,assetsTotal,liab,net:assetsTotal-liab,monthlyDebtSvc,passiveMonthly};
+}
+
+function financialScore(t){
+  let s=0;
+  const debtRatio = t.assetsTotal? t.liab/t.assetsTotal : 1;
+  s += Math.max(0,(1-debtRatio))*35;                                   // solvency
+  const liq = t.monthlyDebtSvc? t.cash/(t.monthlyDebtSvc*6) : (t.cash>0?1:0);
+  s += Math.min(1,liq)*20;                                              // 6-mo liquidity vs debt service
+  const buckets=[t.cash,t.investments,t.realEstate,t.bizEquity,t.otherAssets+t.vehicles].filter(v=>v>t.assetsTotal*0.02).length;
+  s += (buckets/5)*20;                                                  // diversification
+  const gs=DB.goals||[]; const gp = gs.length? gs.reduce((a,g)=>a+goalProgress(g).pct,0)/gs.length/100 : .5;
+  s += gp*15;                                                           // goal progress
+  const snaps=DB.net_worth_snapshots||[];
+  if(snaps.length>=2 && snaps[snaps.length-1].net_worth>snaps[0].net_worth) s+=10; else s+=4;  // trend
+  return Math.round(Math.min(100,s));
+}
+
+function goalProgress(g){
+  const t = totals();
+  let cur, pct;
+  if(g.metric==="Net Worth"){ cur=t.net; pct=g.target_amount? cur/n(g.target_amount)*100 : 0; }
+  else if(g.metric==="Debt Payoff"){ cur=t.liab; const start=n(g.target_amount)||t.liab; pct = start? (1-cur/start)*100 : 0; }
+  else if(g.metric==="Passive Income"){ cur=n(g.current_amount)||t.passiveMonthly*12; pct=g.target_amount? cur/n(g.target_amount)*100:0; }
+  else { cur=n(g.current_amount); pct=g.target_amount? cur/n(g.target_amount)*100:0; }
+  return {cur, pct:Math.max(0,Math.min(100,pct))};
+}
+
+/* linear trend on snapshots -> {slopePerDay, latest} */
+function nwTrend(){
+  const s=(DB.net_worth_snapshots||[]).slice(-180);
+  if(s.length<2) return null;
+  const pts=s.map(r=>[new Date(r.snap_date).getTime()/864e5, n(r.net_worth)]);
+  const N=pts.length, sx=pts.reduce((a,p)=>a+p[0],0), sy=pts.reduce((a,p)=>a+p[1],0);
+  const sxx=pts.reduce((a,p)=>a+p[0]*p[0],0), sxy=pts.reduce((a,p)=>a+p[0]*p[1],0);
+  const den=N*sxx-sx*sx; if(!den) return null;
+  return {slope:(N*sxy-sx*sy)/den, latest:pts[N-1][1]};
+}
+function goalETA(g){
+  const p=goalProgress(g);
+  if(p.pct>=100) return "Achieved 🎉";
+  const tr=nwTrend(); if(!tr||tr.slope<=0) return g.target_date?("Target "+fmtDate(g.target_date)):"Add more history to forecast";
+  let gap;
+  if(g.metric==="Net Worth") gap=n(g.target_amount)-tr.latest;
+  else if(g.metric==="Debt Payoff") gap=totals().liab / (tr.slope||1) * tr.slope; // approx: use NW slope as paydown proxy
+  else return g.target_date?("Target "+fmtDate(g.target_date)):"—";
+  const days=gap/tr.slope; if(days<0||!isFinite(days)) return "—";
+  const d=new Date(Date.now()+days*864e5);
+  return "Forecast: "+d.toLocaleDateString("en-US",{month:"short",year:"numeric"});
+}
+
+/* ============================================================
+   Auth + data layer
+   ============================================================ */
+async function boot(){
+  if(SUPABASE_URL.startsWith("YOUR_")){ $("#setup").classList.remove("hidden"); $("#setup").style.display="flex"; return; }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data:{ session:s } } = await sb.auth.getSession();
+  session = s;
+  sb.auth.onAuthStateChange((_e, s2)=>{ session=s2; if(!s2){ location.reload(); } });
+  if(!session){ $("#auth").classList.remove("hidden"); return; }
+  await enterApp();
+}
+
+async function signIn(){
+  const { error } = await sb.auth.signInWithPassword({ email:$("#authEmail").value.trim(), password:$("#authPass").value });
+  if(error){ authMsg(error.message,1); return; }
+  const { data:{ session:s } } = await sb.auth.getSession(); session=s;
+  $("#auth").classList.add("hidden"); await enterApp();
+}
+async function signUp(){
+  const { data, error } = await sb.auth.signUp({ email:$("#authEmail").value.trim(), password:$("#authPass").value });
+  if(error){ authMsg(error.message,1); return; }
+  if(!data.session){ authMsg("Account created. Check your email to confirm, then sign in."); return; }
+  session = data.session;
+  $("#auth").classList.add("hidden"); await enterApp();
+}
+function authMsg(m,err){ const e=$("#authMsg"); e.textContent=m; e.className="authmsg"+(err?" err":""); }
+
+async function enterApp(){
+  // find or create household
+  let { data:mem } = await sb.from("household_members").select("household_id").eq("user_id", session.user.id).limit(1);
+  if(!mem || !mem.length){
+    const { data:hh, error:e1 } = await sb.from("households")
+      .insert({ name:"My Family Office", created_by:session.user.id }).select().single();
+    if(e1){ toast("Setup error: "+e1.message); return; }
+    await sb.from("household_members").insert({ household_id:hh.id, user_id:session.user.id, role:"owner" });
+    HH = hh.id;
+    // seed businesses + starter goals
+    await sb.from("businesses").insert([
+      { household_id:HH, name:"#TEACH", entity_type:"LLC", notes:"Training Educators and Creating Hope — alternative teacher certification (AL, AZ, IN, MI, NC)." },
+      { household_id:HH, name:"J3 Productions", entity_type:"LLC", notes:"Live events production." },
+      { household_id:HH, name:"EdConsult LLC", entity_type:"LLC", notes:"Consulting + Prova platform development." }
+    ]);
+    await sb.from("goals").insert([
+      { household_id:HH, name:"Net Worth $5M", metric:"Net Worth", target_amount:5000000 },
+      { household_id:HH, name:"Net Worth $10M", metric:"Net Worth", target_amount:10000000 },
+      { household_id:HH, name:"Passive Income $500K/yr", metric:"Passive Income", target_amount:500000 }
+    ]);
+  } else HH = mem[0].household_id;
+
+  const { data:hhRow } = await sb.from("households").select("name").eq("id",HH).single();
+  hhNameCache = hhRow ? hhRow.name : "My Family Office";
+
+  await loadAll();
+  await snapshotToday();
+  $("#app").classList.add("on");
+  renderRail(); render();
+}
+
+async function loadAll(){
+  await Promise.all(TABLES.map(async t=>{
+    const order = t==="net_worth_snapshots"?"snap_date":(t==="transactions"?"tx_date":"created_at");
+    const asc = t==="net_worth_snapshots";
+    const { data, error } = await sb.from(t).select("*").eq("household_id",HH).order(order,{ascending:asc}).limit(1000);
+    if(error) console.warn(t,error.message);
+    DB[t]=data||[];
+  }));
+}
+async function reload(t){ 
+  const order = t==="net_worth_snapshots"?"snap_date":(t==="transactions"?"tx_date":"created_at");
+  const { data } = await sb.from(t).select("*").eq("household_id",HH).order(order,{ascending:t==="net_worth_snapshots"}).limit(1000);
+  DB[t]=data||[];
+}
+async function snapshotToday(){
+  const t=totals();
+  await sb.from("net_worth_snapshots").upsert(
+    { household_id:HH, snap_date:today(), assets_total:t.assetsTotal, liabilities_total:t.liab, net_worth:t.net },
+    { onConflict:"household_id,snap_date" });
+  await reload("net_worth_snapshots");
+}
+async function audit(action, entity, id){
+  sb.from("audit_logs").insert({household_id:HH,user_id:session.user.id,action,entity,entity_id:id||null}).then(()=>{});
+}
+
+/* ============================================================
+   Navigation + render
+   ============================================================ */
+const NAV = [
+  {sec:"Overview"},
+  {k:"home",l:"Home",i:IC.home},
+  {k:"assets",l:"Net Worth",i:IC.worth},
+  {k:"liabilities",l:"Liabilities",i:IC.debt},
+  {sec:"Portfolio"},
+  {k:"properties",l:"Real Estate",i:IC.home2},
+  {k:"vehicles",l:"Vehicles",i:IC.car},
+  {k:"holdings",l:"Investments",i:IC.inv},
+  {k:"businesses",l:"Businesses",i:IC.biz},
+  {k:"events",l:"Events",i:IC.evt},
+  {sec:"Planning"},
+  {k:"goals",l:"Goals",i:IC.goal},
+  {k:"insurance",l:"Insurance",i:IC.ins},
+  {k:"estate",l:"Estate",i:IC.est},
+  {k:"transactions",l:"Transactions",i:IC.tx},
+  {sec:"Office"},
+  {k:"vault",l:"Document Vault",i:IC.doc},
+  {k:"reports",l:"Reporting",i:IC.rep},
+  {k:"ai",l:"AI Advisor",i:IC.ai},
+  {k:"settings",l:"Settings",i:IC.set},
+];
+function renderRail(){
+  $("#rail").innerHTML = `<div class="brand">Wealth<em>HQ</em><small>Family Office OS</small></div>` +
+    NAV.map(x=> x.sec ? `<div class="navsec">${x.sec}</div>` :
+      `<button class="navitem ${view===x.k?"active":""}" onclick="go('${x.k}')">${x.i}<span>${x.l}</span></button>`).join("");
+}
+function go(v,arg){ view=v; viewArg=arg||null; renderRail(); render(); $("#main").scrollTop=0; }
+
+function topbar(title, sub, actions=""){
+  return `<div class="topbar">
+    <div><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:""}</div>
+    <div class="spacer"></div>
+    <div class="searchbox no-print">${IC.search}<input placeholder="Search everything…" oninput="globalSearch(this.value)" id="gsearch"></div>
+    ${actions}
+    <button class="avatar no-print" title="Sign out" onclick="sb.auth.signOut()">${(session?.user?.email||"?")[0].toUpperCase()}</button>
+  </div>
+  <div id="gsResults"></div>`;
+}
+function globalSearch(q){
+  const host=$("#gsResults"); if(!q||q.length<2){host.innerHTML="";return;}
+  q=q.toLowerCase(); const hits=[];
+  Object.entries(MODS).forEach(([k,m])=>{
+    (DB[m.table]||[]).forEach(r=>{
+      const nm=r[m.nameField||"name"]||"";
+      if(String(nm).toLowerCase().includes(q)) hits.push({k,m,r,nm});
+    });
+  });
+  host.innerHTML = hits.length? `<div class="card" style="margin-bottom:18px">${hits.slice(0,8).map(h=>
+    `<div style="padding:6px 2px;display:flex;gap:10px;align-items:center;cursor:pointer" onclick="go('${h.k}');document.getElementById('gsResults').innerHTML=''">
+      <span class="pill">${h.m.title}</span> ${esc(h.nm)}</div>`).join("")}</div>` : "";
+}
+
+function render(){
+  Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});
+  const R = { home:renderHome, vault:renderVault, reports:renderReports, ai:renderAI, settings:renderSettings };
+  const fn = R[view] || (()=>renderModule(view));
+  $("#main").innerHTML = `<div class="view">${fn()}</div>`;
+  afterRender();
+}
+let afterHooks=[];
+function onRendered(f){afterHooks.push(f);}
+function afterRender(){ const h=afterHooks; afterHooks=[]; h.forEach(f=>{try{f()}catch(e){console.warn(e)}}); }
+
+/* ---------- animated counter ---------- */
+function countUp(el, target, dec=0){
+  const dur=900, t0=performance.now();
+  function step(t){
+    const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3);
+    el.textContent=fmt$(target*e,dec);
+    if(p<1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ============================================================
+   HOME — executive summary
+   ============================================================ */
+function deltaSince(days){
+  const s=DB.net_worth_snapshots||[]; if(!s.length) return null;
+  const nowNW=n(s[s.length-1].net_worth);
+  const cutoff=new Date(Date.now()-days*864e5);
+  let base=null;
+  for(const r of s){ if(new Date(r.snap_date)<=cutoff) base=n(r.net_worth); }
+  if(base===null) base=n(s[0].net_worth);
+  if(s.length<2) return null;
+  return {abs:nowNW-base, pct: base? (nowNW-base)/Math.abs(base)*100 : 0};
+}
+function upcomingBills(){
+  const L=DB.liabilities||[]; const d=new Date().getDate();
+  return L.filter(l=>l.due_day&&l.monthly_payment).map(l=>{
+    let days=l.due_day-d; if(days<0)days+=30;
+    return {name:l.name,amt:l.monthly_payment,days,due:l.due_day};
+  }).sort((a,b)=>a.days-b.days).slice(0,5);
+}
+
+function renderHome(){
+  const t=totals(), score=financialScore(t);
+  const d1=deltaSince(1), d30=deltaSince(30), d365=deltaSince(365);
+  const dHTML=(lbl,d)=> d? `<span class="delta ${cls(d.abs)}">${lbl} ${d.abs>=0?"▲":"▼"} ${fmt$(Math.abs(d.abs))} · ${fmtPct(d.pct)}</span>`
+                         : `<span class="delta" style="color:var(--dim)">${lbl} — building history</span>`;
+  const bills=upcomingBills();
+  const txs=(DB.transactions||[]).slice(0,6);
+  const goals=(DB.goals||[]).slice(0,3);
+  const busy = t.assetsTotal===0 && t.liab===0;
+
+  return topbar("Home", new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})) + `
+
+  <div class="hero">
+    <div class="eyebrow">Current net worth</div>
+    <div class="nw mono" id="heroNW">$0</div>
+    <div class="ledger">
+      <span>Assets <b class="mono" id="heroA">—</b></span>
+      <span>−</span>
+      <span>Liabilities <b class="mono down" id="heroL">—</b></span>
+    </div>
+    <div class="deltas">${dHTML("Today",d1)}${dHTML("30d",d30)}${dHTML("1y",d365)}
+      <span class="delta" style="color:var(--gold);border-color:rgba(226,192,120,.35)">Score ${score}/100</span></div>
+    <div class="rule"></div>
+    <canvas id="spark" width="240" height="72"></canvas>
+  </div>
+
+  ${busy? `<div class="empty" style="margin-top:16px"><b>Your ledger is empty</b>Start with Net Worth → add your first account, then a liability. WealthHQ takes a daily snapshot automatically and every chart comes alive.</div>`:""}
+
+  <div class="grid g4" style="margin-top:16px">
+    ${kpi("Cash",t.cash)}${kpi("Investments",t.investments)}${kpi("Real Estate",t.realEstate)}
+    ${kpi("Business Equity",t.bizEquity)}${kpi("Vehicles & Other",t.vehicles+t.otherAssets)}
+    ${kpi("Total Debt",-t.liab,true)}${kpi("Debt Service / mo",-t.monthlyDebtSvc,true)}${kpi("Passive Income / mo",t.passiveMonthly)}
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h3>Wealth growth</h3><div style="height:260px"><canvas id="nwChart"></canvas></div></div>
+    <div class="card"><h3>Asset allocation</h3><div style="height:260px"><canvas id="allocChart"></canvas></div></div>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><h3>Upcoming bills</h3>
+      ${bills.length? bills.map(b=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        <span>${esc(b.name)}<span class="sub" style="color:var(--dim);font-size:11.5px"> · day ${b.due}</span></span>
+        <span class="mono">${fmt$(b.amt)} <span class="pill">${b.days===0?"today":b.days+"d"}</span></span></div>`).join("")
+      : `<div style="color:var(--mute);font-size:13px">Add a due day + monthly payment on any liability and it appears here.</div>`}
+    </div>
+    <div class="card"><h3>Goals</h3>
+      ${goals.length? goals.map(g=>{const p=goalProgress(g);return `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span>${esc(g.name)}</span><span class="mono">${p.pct.toFixed(0)}%</span></div>
+        <div class="bar"><i style="width:${p.pct}%"></i></div>
+        <div style="font-size:11.5px;color:var(--dim)">${goalETA(g)}</div></div>`;}).join("")
+      : `<div style="color:var(--mute);font-size:13px">No goals yet.</div>`}
+      <button class="btn ghost sm" onclick="go('goals')">All goals →</button>
+    </div>
+    <div class="card"><h3>AI insight of the day</h3>
+      <div id="dailyInsight" style="font-size:13.5px;color:var(--mute)">Ask the advisor what changed today.</div>
+      <button class="btn sm" style="margin-top:12px" onclick="go('ai')">${IC.ai} Open AI Advisor</button>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h3>Recent transactions</h3>
+      ${txs.length? `<table>${txs.map(r=>`<tr class="row" onclick="openForm('transactions','${r.id}')"><td>${fmtDate(r.tx_date)}</td><td>${esc(r.description)}</td>
+        <td class="num ${r.tx_type==="Income"?"up":"down"}">${r.tx_type==="Expense"?"-":""}${fmt$(r.amount)}</td></tr>`).join("")}</table>`
+      : `<div style="color:var(--mute);font-size:13px">No transactions logged yet.</div>`}
+      <button class="btn ghost sm" style="margin-top:10px" onclick="go('transactions')">All transactions →</button>
+    </div>
+    <div class="card"><h3>Quick actions</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="btn sm" onclick="openForm('assets')">${IC.plus} Asset</button>
+        <button class="btn sm" onclick="openForm('liabilities')">${IC.plus} Liability</button>
+        <button class="btn sm" onclick="openForm('transactions')">${IC.plus} Transaction</button>
+        <button class="btn sm" onclick="openForm('holdings')">${IC.plus} Holding</button>
+        <button class="btn sm" onclick="openForm('properties')">${IC.plus} Property</button>
+        <button class="btn sm" onclick="openForm('goals')">${IC.plus} Goal</button>
+        <button class="btn sm" onclick="go('reports')">${IC.rep} Report</button>
+        <button class="btn sm" onclick="go('vault')">${IC.doc} Upload doc</button>
+      </div>
+    </div>
+  </div>` + homeCharts(t);
+}
+function kpi(label, val, neg){
+  return `<div class="card kpi"><h3>${label}</h3><div class="v mono ${neg&&val<0?"down":""}" data-cu="${val}"></div></div>`;
+}
+function homeCharts(t){
+  onRendered(()=>{
+    const heroT=totals();
+    countUp($("#heroNW"), heroT.net); $("#heroA").textContent=fmt$(heroT.assetsTotal); $("#heroL").textContent=fmt$(heroT.liab);
+    document.querySelectorAll("[data-cu]").forEach(el=>countUp(el, +el.dataset.cu));
+    // sparkline (90d)
+    const s=(DB.net_worth_snapshots||[]).slice(-90);
+    if(s.length>1){ const c=$("#spark").getContext("2d");
+      charts.spark=new Chart(c,{type:"line",data:{labels:s.map(r=>r.snap_date),datasets:[{data:s.map(r=>n(r.net_worth)),borderColor:"#e2c078",borderWidth:2,pointRadius:0,tension:.35,fill:false}]},
+        options:{plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}},responsive:false}});}
+    // NW line
+    const snaps=DB.net_worth_snapshots||[];
+    charts.nw=new Chart($("#nwChart"),{type:"line",
+      data:{labels:snaps.map(r=>fmtDate(r.snap_date)),datasets:[
+        {label:"Net worth",data:snaps.map(r=>n(r.net_worth)),borderColor:"#e2c078",backgroundColor:"rgba(226,192,120,.12)",fill:true,tension:.3,pointRadius:0,borderWidth:2},
+        {label:"Assets",data:snaps.map(r=>n(r.assets_total)),borderColor:"#5b8cff",borderWidth:1.5,pointRadius:0,tension:.3,fill:false},
+        {label:"Liabilities",data:snaps.map(r=>n(r.liabilities_total)),borderColor:"#e0566b",borderWidth:1.5,pointRadius:0,tension:.3,fill:false}]},
+      options:chartOpts()});
+    // allocation
+    const buckets=[["Cash",t.cash],["Investments",t.investments],["Real Estate",t.realEstate],["Business Equity",t.bizEquity],["Vehicles",t.vehicles],["Other",t.otherAssets]].filter(b=>b[1]>0);
+    charts.alloc=new Chart($("#allocChart"),{type:"doughnut",
+      data:{labels:buckets.map(b=>b[0]),datasets:[{data:buckets.map(b=>b[1]),borderWidth:0,
+        backgroundColor:["#e2c078","#5b8cff","#3fbf7f","#b487e8","#e0566b","#8b93a7"]}]},
+      options:{cutout:"68%",plugins:{legend:{position:"right",labels:{color:"#8b93a7",boxWidth:10,font:{size:11}}}},maintainAspectRatio:false}});
+  });
+  return "";
+}
+function chartOpts(){
+  return {maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+    plugins:{legend:{labels:{color:"#8b93a7",boxWidth:10,font:{size:11}}}},
+    scales:{x:{ticks:{color:"#5b6274",maxTicksLimit:7,font:{size:10}},grid:{color:"rgba(255,255,255,.04)"}},
+            y:{ticks:{color:"#5b6274",font:{size:10},callback:v=>"$"+(Math.abs(v)>=1e6?(v/1e6).toFixed(1)+"M":(v/1e3).toFixed(0)+"K")},grid:{color:"rgba(255,255,255,.04)"}}}};
+}
+
+/* ============================================================
+   Generic module views + CRUD
+   ============================================================ */
+function renderModule(key){
+  const m=MODS[key]; if(!m) return topbar("Not found");
+  const rows=DB[m.table]||[];
+  const total=m.sumField? rows.reduce((s,r)=>s+n(r[m.sumField]),0):null;
+  const add=`<button class="btn gold no-print" onclick="openForm('${key}')">${IC.plus} Add ${m.singular}</button>`;
+  let body;
+  if(key==="properties") body=propertyCards(rows);
+  else if(key==="businesses") body=businessCards(rows);
+  else if(key==="events") body=eventCards(rows);
+  else if(key==="goals") body=goalCards(rows);
+  else if(key==="holdings") body=holdingsView(rows,m);
+  else body=tableView(key,m,rows);
+  return topbar(m.title, total!==null?`Total ${fmt$(total)}`:"", add) + body;
+}
+
+function tableView(key,m,rows){
+  if(!rows.length) return emptyState(m);
+  const groups={};
+  rows.forEach(r=>{const g=m.groupBy? (r[m.groupBy]||"Other"):"__all";(groups[g]=groups[g]||[]).push(r);});
+  return Object.entries(groups).map(([g,rs])=>{
+    const sub=m.sumField? fmt$(rs.reduce((s,r)=>s+n(r[m.sumField]),0)):"";
+    return (g!=="__all"?`<div class="grp">${esc(g)} <span class="mono">${sub} · ${rs.length}</span></div>`:"") +
+    `<div class="card" style="padding:6px 4px"><table>
+      <tr>${m.cols.map(c=>`<th class="${c.num?"num":""}">${c.l}</th>`).join("")}</tr>
+      ${rs.map(r=>`<tr class="row" onclick="openForm('${key}','${r.id}')">${m.cols.map(c=>`<td class="${c.num?"num":""}">${c.v(r)}</td>`).join("")}</tr>`).join("")}
+    </table></div>`;
+  }).join("");
+}
+function emptyState(m){
+  return `<div class="empty"><b>No ${m.title.toLowerCase()} yet</b>Add your first ${m.singular} — every figure rolls into the dashboard automatically.</div>`;
+}
+
+/* ---------- Real estate cards ---------- */
+function propertyCards(rows){
+  if(!rows.length) return emptyState(MODS.properties);
+  return `<div class="grid g2">` + rows.map(p=>{
+    const equity=n(p.current_value)-n(p.mortgage_balance);
+    const opex=n(p.expenses_monthly)*12+n(p.taxes_annual)+n(p.insurance_annual)+n(p.maintenance_annual);
+    const noi=n(p.rent_monthly)*12-opex;
+    const cap=n(p.current_value)? noi/n(p.current_value)*100:0;
+    const app=n(p.current_value)-n(p.purchase_price);
+    const cf=(noi/12) - 0; // debt service on the property lives in Liabilities if tracked
+    return `<div class="card" style="cursor:pointer" onclick="openForm('properties','${p.id}')">
+      ${p.photo_url?`<div style="height:150px;border-radius:12px;background:url('${esc(p.photo_url)}') center/cover;margin:-6px -6px 14px"></div>`:""}
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div><div style="font-family:var(--disp);font-size:18px">${esc(p.name)}</div>
+        <div style="color:var(--mute);font-size:12.5px">${esc(p.address||"")}</div></div>
+        <div class="mono" style="font-size:20px">${fmt$(p.current_value)}</div></div>
+      <div class="grid g3" style="margin-top:14px;gap:10px">
+        ${mini("Equity",fmt$(equity))}${mini("Mortgage",fmt$(p.mortgage_balance),"down")}
+        ${mini("Rate",p.interest_rate?n(p.interest_rate).toFixed(2)+"%":"—")}
+        ${mini("NOI / yr",fmt$(noi),cls(noi))}${mini("Cap rate",cap.toFixed(2)+"%")}
+        ${mini("Cash flow / mo",fmt$(cf),cls(cf))}
+        ${mini("Appreciation",p.purchase_price?fmt$(app):"—",cls(app))}
+        ${mini("Taxes / yr",fmt$(p.taxes_annual))}${mini("Insurance / yr",fmt$(p.insurance_annual))}
+      </div></div>`;
+  }).join("")+`</div>`;
+}
+function mini(l,v,c=""){return `<div><div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)">${l}</div><div class="mono ${c}" style="font-size:14px">${v}</div></div>`;}
+
+/* ---------- Business cards ---------- */
+function businessCards(rows){
+  if(!rows.length) return emptyState(MODS.businesses);
+  return `<div class="grid g2">` + rows.map(b=>{
+    const profit=n(b.revenue_ttm)-n(b.expenses_ttm);
+    const val=n(b.ebitda)*n(b.valuation_multiple||0);
+    const equity=Math.max(0,(val+n(b.cash)-n(b.debt))*(n(b.ownership_pct||100)/100));
+    const margin=n(b.revenue_ttm)? profit/n(b.revenue_ttm)*100:0;
+    return `<div class="card" style="cursor:pointer" onclick="openForm('businesses','${b.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-family:var(--disp);font-size:19px">${esc(b.name)}</div>
+        <span class="pill">${esc(b.entity_type||"LLC")} · ${n(b.ownership_pct||100)}%</span></div>
+      <div class="mono" style="font-size:24px;margin:8px 0 2px;color:var(--gold)">${fmt$(equity)}</div>
+      <div style="font-size:11.5px;color:var(--dim)">Your equity (EBITDA × ${n(b.valuation_multiple||0)} + cash − debt) × ownership</div>
+      <div class="grid g3" style="margin-top:14px;gap:10px">
+        ${mini("Revenue TTM",fmt$(b.revenue_ttm))}${mini("Profit",fmt$(profit),cls(profit))}${mini("Margin",margin.toFixed(1)+"%")}
+        ${mini("EBITDA",fmt$(b.ebitda))}${mini("Cash",fmt$(b.cash))}${mini("Debt",fmt$(b.debt),n(b.debt)>0?"down":"")}
+        ${mini("A/R",fmt$(b.accounts_receivable))}${mini("A/P",fmt$(b.accounts_payable))}${mini("Employees",n(b.employees).toLocaleString())}
+      </div>
+      ${b.kpis?`<div style="margin-top:12px;font-size:12.5px;color:var(--mute)"><b style="color:var(--text)">KPIs:</b> ${esc(b.kpis)}</div>`:""}
+    </div>`;
+  }).join("")+`</div>`;
+}
+
+/* ---------- Event cards ---------- */
+function eventCards(rows){
+  if(!rows.length) return emptyState(MODS.events);
+  return `<div class="grid g2">` + rows.map(e=>{
+    const netp=n(e.actual_revenue)-n(e.expenses);
+    const roi=n(e.expenses)? netp/n(e.expenses)*100:0;
+    const vsProj=n(e.projected_revenue)? (n(e.actual_revenue)/n(e.projected_revenue)*100):0;
+    return `<div class="card" style="cursor:pointer" onclick="openForm('events','${e.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div><div style="font-family:var(--disp);font-size:18px">${esc(e.name)}</div>
+        <div style="color:var(--mute);font-size:12.5px">${fmtDate(e.event_date)}${e.venue?" · "+esc(e.venue):""}</div></div>
+        <div class="mono ${cls(netp)}" style="font-size:20px">${fmt$(netp)}</div></div>
+      <div class="grid g3" style="margin-top:14px;gap:10px">
+        ${mini("Budget",fmt$(e.budget))}${mini("Revenue",fmt$(e.actual_revenue))}${mini("Expenses",fmt$(e.expenses),"down")}
+        ${mini("Tickets",fmt$(e.ticket_sales))}${mini("VIP",fmt$(e.vip_sales))}${mini("Sponsors",fmt$(e.sponsors))}
+        ${mini("ROI",roi.toFixed(0)+"%",cls(roi))}${mini("vs projection",vsProj?vsProj.toFixed(0)+"%":"—")}${mini("Attendance",e.attendance?n(e.attendance).toLocaleString():"—")}
+      </div>
+      ${e.lessons_learned?`<div style="margin-top:12px;font-size:12.5px;color:var(--mute)"><b style="color:var(--text)">Lessons:</b> ${esc(e.lessons_learned)}</div>`:""}
+    </div>`;
+  }).join("")+`</div>`;
+}
+
+/* ---------- Goal cards ---------- */
+function goalCards(rows){
+  if(!rows.length) return emptyState(MODS.goals);
+  return `<div class="grid g2">` + rows.map(g=>{
+    const p=goalProgress(g);
+    return `<div class="card" style="cursor:pointer" onclick="openForm('goals','${g.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-family:var(--disp);font-size:18px">${esc(g.name)}</div><span class="pill">${esc(g.metric)}</span></div>
+      <div class="mono" style="font-size:22px;margin-top:8px">${fmt$(p.cur)} <span style="color:var(--dim);font-size:14px">/ ${fmt$(g.target_amount)}</span></div>
+      <div class="bar"><i style="width:${p.pct}%"></i></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--mute)">
+        <span>${p.pct.toFixed(1)}% there</span><span>${goalETA(g)}</span></div>
+      ${g.target_date?`<div style="font-size:11.5px;color:var(--dim);margin-top:6px">Target date ${fmtDate(g.target_date)}</div>`:""}
+    </div>`;
+  }).join("")+`</div>`;
+}
+
+/* ---------- Investments view (table + charts) ---------- */
+function holdingsView(rows,m){
+  if(!rows.length) return emptyState(m);
+  const byClass={}, byAcct={};
+  rows.forEach(r=>{byClass[r.asset_class]=(byClass[r.asset_class]||0)+n(r.current_value);
+                   byAcct[r.account]=(byAcct[r.account]||0)+n(r.current_value);});
+  const totV=rows.reduce((s,r)=>s+n(r.current_value),0), totB=rows.reduce((s,r)=>s+n(r.cost_basis),0);
+  const divInc=rows.reduce((s,r)=>s+n(r.current_value)*n(r.dividend_yield)/100,0);
+  onRendered(()=>{
+    const pal=["#e2c078","#5b8cff","#3fbf7f","#b487e8","#e0566b","#8b93a7","#6fd3e0","#e8a15b"];
+    charts.hc=new Chart($("#byClass"),{type:"doughnut",data:{labels:Object.keys(byClass),datasets:[{data:Object.values(byClass),borderWidth:0,backgroundColor:pal}]},
+      options:{cutout:"66%",plugins:{legend:{position:"right",labels:{color:"#8b93a7",boxWidth:10,font:{size:11}}}},maintainAspectRatio:false}});
+    charts.ha=new Chart($("#byAcct"),{type:"doughnut",data:{labels:Object.keys(byAcct),datasets:[{data:Object.values(byAcct),borderWidth:0,backgroundColor:pal.slice().reverse()}]},
+      options:{cutout:"66%",plugins:{legend:{position:"right",labels:{color:"#8b93a7",boxWidth:10,font:{size:11}}}},maintainAspectRatio:false}});
+  });
+  return `<div class="grid g4" style="margin-bottom:16px">
+    ${kpi("Portfolio value",totV)}${kpi("Unrealized gain",totV-totB)}
+    ${kpi("Est. dividends / yr",divInc)}<div class="card kpi"><h3>Positions</h3><div class="v mono">${rows.length}</div></div></div>
+  <div class="grid g2" style="margin-bottom:16px">
+    <div class="card"><h3>Allocation by asset class</h3><div style="height:220px"><canvas id="byClass"></canvas></div></div>
+    <div class="card"><h3>Allocation by account</h3><div style="height:220px"><canvas id="byAcct"></canvas></div></div></div>
+  ` + tableView("holdings",m,rows) + kpiCounters();
+}
+function kpiCounters(){ onRendered(()=>document.querySelectorAll("[data-cu]").forEach(el=>countUp(el,+el.dataset.cu))); return ""; }
+
+/* ============================================================
+   Modal form (create / edit / delete) — generic
+   ============================================================ */
+function openForm(key,id){
+  const m=MODS[key]; const row=id? (DB[m.table]||[]).find(r=>r.id===id):null;
+  const f=m.fields.map(fl=>{
+    const v=row? row[fl.k]:"";
+    const base=`id="f_${fl.k}"`;
+    let input;
+    if(fl.t==="select") input=`<select ${base}>${(fl.opts||[]).map(o=>`<option ${v===o?"selected":""}>${o}</option>`).join("")}</select>`;
+    else if(fl.t==="area") input=`<textarea ${base}>${esc(v)}</textarea>`;
+    else if(fl.t==="date") input=`<input type="date" ${base} value="${v||""}">`;
+    else if(fl.t==="money"||fl.t==="num") input=`<input type="number" step="any" inputmode="decimal" ${base} value="${v??""}" placeholder="${fl.t==="money"?"0.00":"0"}">`;
+    else input=`<input type="text" ${base} value="${esc(v)}">`;
+    return `<div class="${fl.full?"full":""}"><label>${fl.l}${fl.req?" *":""}</label>${input}</div>`;
+  }).join("");
+  $("#modalHost").innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal"><h2>${row?"Edit":"Add"} ${m.singular}</h2>
+      <div class="fgrid">${f}</div>
+      <div class="mfoot">
+        ${row?`<button class="btn ghost danger" onclick="delRow('${key}','${id}')">Delete</button>`:""}
+        <div class="spacer"></div>
+        <button class="btn ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn gold" onclick="saveRow('${key}','${id||""}')">${row?"Save changes":"Add "+m.singular}</button>
+      </div></div></div>`;
+}
+function closeModal(){ $("#modalHost").innerHTML=""; }
+async function saveRow(key,id){
+  const m=MODS[key], rec={household_id:HH};
+  for(const fl of m.fields){
+    let v=$("#f_"+fl.k).value;
+    if(fl.t==="money"||fl.t==="num") v=(v===""?null:+v);
+    if(fl.t==="date"&&!v) v=null;
+    if(fl.req && (v===null||v==="")){ toast(fl.l+" is required"); return; }
+    rec[fl.k]=v===""?null:v;
+  }
+  const q = id? sb.from(m.table).update(rec).eq("id",id) : sb.from(m.table).insert(rec);
+  const { error } = await q;
+  if(error){ toast("Error: "+error.message); return; }
+  audit(id?"update":"create", m.table, id);
+  await reload(m.table); await snapshotToday();
+  closeModal(); render(); toast((id?"Updated":"Added")+" ✓");
+}
+async function delRow(key,id){
+  if(!confirm("Delete permanently?")) return;
+  const m=MODS[key];
+  const { error } = await sb.from(m.table).delete().eq("id",id);
+  if(error){ toast("Error: "+error.message); return; }
+  audit("delete", m.table, id);
+  await reload(m.table); await snapshotToday();
+  closeModal(); render(); toast("Deleted");
+}
+
+/* ============================================================
+   Document Vault
+   ============================================================ */
+function renderVault(){
+  const docs=DB.documents||[];
+  const byCat={}; docs.forEach(d=>(byCat[d.category]=byCat[d.category]||[]).push(d));
+  return topbar("Document Vault","Private bucket · access limited to your household",
+    `<label class="btn gold no-print" style="position:relative;overflow:hidden">${IC.plus} Upload
+      <input type="file" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="uploadDoc(this)"></label>
+    <select id="upCat" class="no-print" style="width:150px">${DOC_CATS.map(c=>`<option>${c}</option>`).join("")}</select>`) +
+  (docs.length? DOC_CATS.filter(c=>byCat[c]).map(c=>`
+    <div class="grp">${c} <span class="mono">${byCat[c].length}</span></div>
+    <div class="card" style="padding:6px 4px"><table>
+      <tr><th>Document</th><th>Uploaded</th><th class="num">Size</th><th class="no-print"></th></tr>
+      ${byCat[c].map(d=>`<tr><td>${esc(d.name)}</td><td>${fmtDate(d.created_at?.slice(0,10))}</td>
+        <td class="num">${d.size_bytes?(d.size_bytes/1024).toFixed(0)+" KB":"—"}</td>
+        <td class="no-print" style="text-align:right">
+          <button class="btn sm" onclick="downloadDoc('${d.id}')">Open</button>
+          <button class="btn sm ghost danger" onclick="deleteDoc('${d.id}')">Delete</button></td></tr>`).join("")}
+    </table></div>`).join("")
+  : `<div class="empty"><b>Vault is empty</b>Pick a category and upload PDFs, images, contracts, tax returns — anything. Files live in a private Supabase bucket only your household can read.</div>`);
+}
+async function uploadDoc(inp){
+  const file=inp.files[0]; if(!file) return;
+  if(file.size>25*1024*1024){ toast("Max 25 MB per file"); return; }
+  const cat=$("#upCat").value;
+  const path=`${HH}/${cat}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g,"_")}`;
+  toast("Uploading…");
+  const { error } = await sb.storage.from("vault").upload(path,file);
+  if(error){ toast("Upload failed: "+error.message); return; }
+  await sb.from("documents").insert({household_id:HH,name:file.name,category:cat,storage_path:path,size_bytes:file.size,uploaded_by:session.user.id});
+  audit("upload","documents");
+  await reload("documents"); render(); toast("Uploaded ✓");
+}
+async function downloadDoc(id){
+  const d=(DB.documents||[]).find(x=>x.id===id); if(!d) return;
+  const { data, error } = await sb.storage.from("vault").createSignedUrl(d.storage_path, 300);
+  if(error){ toast(error.message); return; }
+  window.open(data.signedUrl,"_blank");
+}
+async function deleteDoc(id){
+  if(!confirm("Delete this document?")) return;
+  const d=(DB.documents||[]).find(x=>x.id===id);
+  await sb.storage.from("vault").remove([d.storage_path]);
+  await sb.from("documents").delete().eq("id",id);
+  await reload("documents"); render(); toast("Deleted");
+}
+
+/* ============================================================
+   Reporting — printable docs + CSV export
+   ============================================================ */
+const REPORTS=[
+  {k:"balance",l:"Balance Sheet"},{k:"networth",l:"Net Worth Report"},{k:"cashflow",l:"Cash Flow"},
+  {k:"alloc",l:"Asset Allocation"},{k:"bizval",l:"Business Valuation"},{k:"re",l:"Real Estate Summary"},
+  {k:"invperf",l:"Investment Performance"},{k:"debt",l:"Debt Report"},{k:"income",l:"Income Report"},
+  {k:"tax",l:"Tax Summary"},{k:"annual",l:"Annual Report"}];
+let curReport="balance";
+
+function renderReports(){
+  return topbar("Reporting","Print to PDF, or export CSV for Excel",
+    `<button class="btn no-print" onclick="exportCSV()">CSV / Excel</button>
+     <button class="btn gold no-print" onclick="window.print()">Print / PDF</button>`) +
+  `<div class="chips no-print">${REPORTS.map(r=>`<button class="chip" style="${r.k===curReport?'color:var(--gold);border-color:var(--gold)':''}" onclick="curReport='${r.k}';render()">${r.l}</button>`).join("")}</div>
+   <div class="report-doc">${reportBody(curReport)}</div>`;
+}
+function rrow(cells,tot){ return `<tr class="${tot?"tot":""}">${cells.map((c,i)=>`<td class="${i>0?"num":""}">${c}</td>`).join("")}</tr>`; }
+function rhead(t){ const name=REPORTS.find(r=>r.k===t).l;
+  return `<h2>${name}</h2><div class="rsub">WealthHQ · ${new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})} · All figures USD</div>`; }
+
+function reportBody(k){
+  const t=totals();
+  if(k==="balance"||k==="networth"||k==="annual"){
+    const rows=[["Cash & equivalents",t.cash],["Investments",t.investments],["Real estate",t.realEstate],
+      ["Business equity",t.bizEquity],["Vehicles",t.vehicles],["Other assets",t.otherAssets]];
+    let extra="";
+    if(k==="annual"){
+      const s=DB.net_worth_snapshots||[]; const first=s[0], last=s[s.length-1];
+      if(first&&last) extra=`<p style="margin:14px 0">Net worth moved from <b>${fmt$(first.net_worth)}</b> (${fmtDate(first.snap_date)}) to <b>${fmt$(last.net_worth)}</b> (${fmtDate(last.snap_date)}), a change of <b>${fmt$(n(last.net_worth)-n(first.net_worth))}</b>.</p>`;
+    }
+    return rhead(k)+extra+`<table><tr><th>Assets</th><th class="num">Value</th></tr>
+      ${rows.map(r=>rrow([r[0],fmt$(r[1])])).join("")}
+      ${rrow(["Total assets",fmt$(t.assetsTotal)],1)}</table>
+      <table style="margin-top:20px"><tr><th>Liabilities</th><th class="num">Balance</th></tr>
+      ${(DB.liabilities||[]).map(l=>rrow([esc(l.name),fmt$(l.balance)])).join("")}
+      ${(DB.properties||[]).filter(p=>n(p.mortgage_balance)>0).map(p=>rrow([esc(p.name)+" mortgage",fmt$(p.mortgage_balance)])).join("")}
+      ${(DB.vehicles||[]).filter(v=>n(v.loan_balance)>0).map(v=>rrow([esc(v.name)+" loan",fmt$(v.loan_balance)])).join("")}
+      ${rrow(["Total liabilities",fmt$(t.liab)],1)}
+      ${rrow(["NET WORTH",fmt$(t.net)],1)}</table>`;
+  }
+  if(k==="alloc"){
+    const rows=[["Cash",t.cash],["Investments",t.investments],["Real estate",t.realEstate],["Business equity",t.bizEquity],["Vehicles",t.vehicles],["Other",t.otherAssets]].filter(r=>r[1]>0);
+    return rhead(k)+`<table><tr><th>Class</th><th class="num">Value</th><th class="num">Weight</th></tr>
+      ${rows.map(r=>rrow([r[0],fmt$(r[1]),(t.assetsTotal?r[1]/t.assetsTotal*100:0).toFixed(1)+"%"])).join("")}
+      ${rrow(["Total",fmt$(t.assetsTotal),"100%"],1)}</table>`;
+  }
+  if(k==="bizval"){
+    return rhead(k)+`<table><tr><th>Company</th><th class="num">Revenue TTM</th><th class="num">EBITDA</th><th class="num">Multiple</th><th class="num">Enterprise value</th><th class="num">Your equity</th></tr>
+      ${(DB.businesses||[]).map(b=>{const ev=n(b.ebitda)*n(b.valuation_multiple||0);
+        const eq=Math.max(0,(ev+n(b.cash)-n(b.debt))*(n(b.ownership_pct||100)/100));
+        return rrow([esc(b.name),fmt$(b.revenue_ttm),fmt$(b.ebitda),(n(b.valuation_multiple||0)).toFixed(1)+"×",fmt$(ev),fmt$(eq)]);}).join("")}
+      ${rrow(["Total business equity","","","","",fmt$(t.bizEquity)],1)}</table>
+      <p style="margin-top:12px;color:#666;font-size:11px">Method: EBITDA × multiple + cash − debt, × ownership %. Multiples are owner estimates, not market quotes.</p>`;
+  }
+  if(k==="re"){
+    return rhead(k)+`<table><tr><th>Property</th><th class="num">Value</th><th class="num">Mortgage</th><th class="num">Equity</th><th class="num">NOI/yr</th><th class="num">Cap</th></tr>
+      ${(DB.properties||[]).map(p=>{const noi=n(p.rent_monthly)*12-(n(p.expenses_monthly)*12+n(p.taxes_annual)+n(p.insurance_annual)+n(p.maintenance_annual));
+        return rrow([esc(p.name),fmt$(p.current_value),fmt$(p.mortgage_balance),fmt$(n(p.current_value)-n(p.mortgage_balance)),fmt$(noi),(n(p.current_value)?noi/n(p.current_value)*100:0).toFixed(2)+"%"]);}).join("")}</table>`;
+  }
+  if(k==="invperf"){
+    return rhead(k)+`<table><tr><th>Holding</th><th>Account</th><th class="num">Basis</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Return</th></tr>
+      ${(DB.holdings||[]).map(h=>{const g=n(h.current_value)-n(h.cost_basis);
+        return rrow([esc(h.name)+(h.symbol?" ("+esc(h.symbol)+")":""),esc(h.account),fmt$(h.cost_basis),fmt$(h.current_value),fmt$(g),(n(h.cost_basis)?g/n(h.cost_basis)*100:0).toFixed(1)+"%"]);}).join("")}</table>`;
+  }
+  if(k==="debt"){
+    return rhead(k)+`<table><tr><th>Liability</th><th class="num">Rate</th><th class="num">Balance</th><th class="num">Payment/mo</th><th class="num">Interest paid</th></tr>
+      ${(DB.liabilities||[]).map(l=>rrow([esc(l.name),(n(l.interest_rate)).toFixed(2)+"%",fmt$(l.balance),fmt$(l.monthly_payment),fmt$(l.interest_paid)])).join("")}
+      ${rrow(["Total","",fmt$((DB.liabilities||[]).reduce((s,l)=>s+n(l.balance),0)),fmt$(t.monthlyDebtSvc),""],1)}</table>
+      <p style="margin-top:12px;color:#666;font-size:11px">Avalanche order (highest rate first) minimizes total interest; snowball (smallest balance first) maximizes momentum.</p>`;
+  }
+  if(k==="cashflow"||k==="income"||k==="tax"){
+    const y=new Date().getFullYear();
+    const txs=(DB.transactions||[]).filter(x=>String(x.tx_date).startsWith(y));
+    const inc=txs.filter(x=>x.tx_type==="Income"), exp=txs.filter(x=>x.tx_type==="Expense");
+    const si=inc.reduce((s,x)=>s+n(x.amount),0), se=exp.reduce((s,x)=>s+n(x.amount),0);
+    const list = k==="income"? inc : txs;
+    return rhead(k)+`<p style="margin-bottom:14px">YTD ${y}: income <b>${fmt$(si)}</b>, expenses <b>${fmt$(se)}</b>, net <b>${fmt$(si-se)}</b>. Rental NOI and dividends estimated at <b>${fmt$(t.passiveMonthly*12)}/yr</b> from portfolio settings.</p>
+      <table><tr><th>Date</th><th>Description</th><th>Type</th><th class="num">Amount</th></tr>
+      ${list.slice(0,120).map(x=>rrow([fmtDate(x.tx_date),esc(x.description),x.tx_type,fmt$(x.amount)])).join("")}</table>
+      ${k==="tax"?`<p style="margin-top:12px;color:#666;font-size:11px">Informational summary from logged transactions — verify against source documents with your CPA before filing.</p>`:""}`;
+  }
+  return rhead(k);
+}
+function exportCSV(){
+  const t=totals();
+  let rows=[["WealthHQ Export","", new Date().toISOString().slice(0,10)],[],
+    ["Section","Item","Value"],
+    ["Summary","Total assets",t.assetsTotal],["Summary","Total liabilities",t.liab],["Summary","Net worth",t.net],[]];
+  const dump=(sec,arr,name,val)=>arr.forEach(r=>rows.push([sec,r[name]||"",n(r[val])]));
+  dump("Assets",DB.assets||[],"name","current_value");
+  dump("Properties",DB.properties||[],"name","current_value");
+  dump("Vehicles",DB.vehicles||[],"name","current_value");
+  dump("Holdings",DB.holdings||[],"name","current_value");
+  dump("Liabilities",DB.liabilities||[],"name","balance");
+  const csv=rows.map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=`wealthhq_${today()}.csv`; a.click();
+}
+
+/* ============================================================
+   AI Advisor
+   ============================================================ */
+function buildSnapshot(){
+  const t=totals(), s=DB.net_worth_snapshots||[];
+  const slim=(arr,keys)=>(arr||[]).map(r=>Object.fromEntries(keys.map(k=>[k,r[k]])));
+  return {
+    date:today(), totals:t, financial_score:financialScore(t),
+    net_worth_history:s.slice(-30).map(r=>({d:r.snap_date,nw:n(r.net_worth)})),
+    assets:slim(DB.assets,["name","category","purchase_price","current_value","purchase_date"]),
+    liabilities:slim(DB.liabilities,["name","category","interest_rate","balance","monthly_payment"]),
+    properties:slim(DB.properties,["name","current_value","mortgage_balance","rent_monthly","taxes_annual"]),
+    vehicles:slim(DB.vehicles,["name","current_value","loan_balance"]),
+    holdings:slim(DB.holdings,["name","symbol","account","asset_class","cost_basis","current_value","dividend_yield"]),
+    businesses:slim(DB.businesses,["name","revenue_ttm","expenses_ttm","ebitda","valuation_multiple","cash","debt","ownership_pct"]),
+    goals:slim(DB.goals,["name","metric","target_amount","target_date"]),
+    recent_transactions:slim((DB.transactions||[]).slice(0,20),["tx_date","description","amount","tx_type"])
+  };
+}
+const AI_CHIPS=["What changed in my finances today?","How close am I to $10M?","What should I pay off first?",
+  "Which investments underperformed?","What is my biggest asset?","What are my biggest risks?","What should I improve this month?"];
+
+function renderAI(){
+  return topbar("AI Advisor","Answers computed from your live ledger") + `
+  <div class="card chat">
+    <div class="chips no-print">${AI_CHIPS.map(q=>`<button class="chip" onclick="askAI('${q.replace(/'/g,"\\'")}')">${q}</button>`).join("")}</div>
+    <div class="msgs" id="msgs">${aiHistory.length? aiHistory.map(m=>`<div class="msg ${m.role==="user"?"u":"a"}">${esc(m.content)}</div>`).join("")
+      : `<div class="msg a">I can see your full balance sheet — every asset, liability, business, holding and goal. Ask me anything about it.</div>`}</div>
+    <div class="chatin no-print">
+      <input id="aiQ" placeholder="Ask your family office…" onkeydown="if(event.key==='Enter')askAI()">
+      <button class="btn gold" onclick="askAI()">Ask</button>
+    </div>
+  </div>`;
+}
+async function askAI(preset){
+  const q = preset || $("#aiQ").value.trim(); if(!q) return;
+  if(!preset) $("#aiQ").value="";
+  aiHistory.push({role:"user",content:q});
+  const msgs=$("#msgs");
+  msgs.insertAdjacentHTML("beforeend",`<div class="msg u">${esc(q)}</div><div class="msg a" id="aiPending">Analyzing your ledger…</div>`);
+  msgs.scrollTop=msgs.scrollHeight;
+  try{
+    const r=await fetch(AI_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({question:q,snapshot:buildSnapshot(),history:aiHistory.slice(0,-1)})});
+    const data=await r.json();
+    const ans=data.answer||("Error: "+(data.error||"no response"));
+    $("#aiPending").textContent=ans;
+    aiHistory.push({role:"assistant",content:ans});
+    sb.from("ai_logs").insert({household_id:HH,user_id:session.user.id,question:q,answer:ans}).then(()=>{});
+  }catch(e){
+    $("#aiPending").textContent="Could not reach the advisor. If running locally, the Netlify function only works on the deployed site. Error: "+e.message;
+  }
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+/* ============================================================
+   Settings + Integrations
+   ============================================================ */
+const INTEGRATIONS=[
+  ["Plaid","Bank & card sync","Requires a Plaid developer account and contract; balances then flow into Assets automatically."],
+  ["QuickBooks","Business P&L sync","OAuth app approval required from Intuit."],
+  ["Fidelity / Schwab / Vanguard","Brokerage positions","Aggregated via Plaid Investments or SnapTrade."],
+  ["Robinhood / Coinbase","Trading & crypto","Coinbase has a public API; Robinhood via aggregators only."],
+  ["Stripe / PayPal / Venmo","Business receipts","Stripe API keys per business; webhook → transactions."],
+  ["Zillow","Property Zestimates","Bridge API access required; manual value updates work today."],
+  ["Kelley Blue Book","Vehicle values","No public API; update values manually or via VIN services."],
+  ["Google Calendar / Drive, Dropbox, OneDrive","Docs & schedule","OAuth per provider; Vault covers storage today."],
+  ["Rocket Money","Subscriptions","No public API; log as recurring transactions."]];
+
+function renderSettings(){
+  const hh=(DB.households||[])[0];
+  return topbar("Settings","Household, security & integrations") + `
+  <div class="grid g2">
+    <div class="card"><h3>Household</h3>
+      <label>Household name</label>
+      <div style="display:flex;gap:10px"><input id="hhName" value="${esc(hhNameCache||"My Family Office")}">
+      <button class="btn" onclick="saveHH()">Save</button></div>
+      <div style="margin-top:16px;font-size:13px;color:var(--mute)">Signed in as <b style="color:var(--text)">${esc(session.user.email)}</b></div>
+      <button class="btn ghost sm" style="margin-top:10px" onclick="sb.auth.signOut()">Sign out</button>
+    </div>
+    <div class="card"><h3>Security</h3>
+      <div style="font-size:13.5px;color:var(--mute);line-height:1.7">
+        • Row-level security isolates every household's data at the database layer.<br>
+        • The document vault is a private bucket; links are signed and expire in 5 minutes.<br>
+        • Every create / update / delete is written to the audit log.<br>
+        • <b style="color:var(--text)">MFA:</b> enable TOTP in Supabase Dashboard → Authentication → MFA, then enroll from any Supabase-MFA client. Email confirmation is on by default.<br>
+        • <b style="color:var(--text)">Backups:</b> Supabase runs daily automatic backups on paid plans; the CSV export is your portable copy.
+      </div>
+    </div>
+  </div>
+  <div class="grp">Integrations</div>
+  <div class="grid g3">
+    ${INTEGRATIONS.map(i=>`<div class="card"><h3>${i[0]}</h3>
+      <div style="font-size:13px;margin-bottom:6px">${i[1]}</div>
+      <div style="font-size:12px;color:var(--mute)">${i[2]}</div>
+      <span class="pill" style="margin-top:10px;display:inline-block">Requires API credentials</span></div>`).join("")}
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Audit trail</h3>
+    <div style="font-size:12.5px;color:var(--mute)">Recent activity is stored in the <span class="mono">audit_logs</span> table (Supabase → Table Editor) with user, action, entity and timestamp.</div>
+  </div>`;
+}
+let hhNameCache=null;
+async function saveHH(){
+  const name=$("#hhName").value.trim()||"My Family Office";
+  await sb.from("households").update({name}).eq("id",HH);
+  hhNameCache=name; toast("Saved ✓");
+}
+
+/* ---------- go ---------- */
+boot();
+</script>
+</body>
+</html>
