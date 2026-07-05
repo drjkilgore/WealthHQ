@@ -197,6 +197,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
       <button class="btn" style="flex:1;justify-content:center" onclick="signUp()">Create account</button>
     </div>
     <div id="authMsg" class="authmsg"></div>
+    <div style="margin-top:16px;font-size:12px;color:var(--dim)">By creating an account you consent to the collection and processing of your information as described in the <a href="/privacy.html" target="_blank">Privacy Policy</a>.</div>
   </div>
 </div>
 
@@ -498,7 +499,7 @@ const MODS = {
       {l:"Phone",v:r=>`<span class="mono">${esc(r.phone||"—")}</span>`}]
   }
 };
-const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots"];
+const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots","plaid_items"];
 
 /* ---------- payoff estimate: n = -ln(1 - rB/P) / ln(1+r) ---------- */
 function estPayoff(r){
@@ -589,14 +590,14 @@ async function boot(){
   session = s;
   sb.auth.onAuthStateChange((event, s2)=>{ if(event === "SIGNED_OUT"){ location.reload(); } else if(s2){ session = s2; } });
   if(!session){ $("#auth").classList.remove("hidden"); return; }
-  await enterApp();
+  if(await ensureAAL()) await enterApp();
 }
 
 async function signIn(){
   const { error } = await sb.auth.signInWithPassword({ email:$("#authEmail").value.trim(), password:$("#authPass").value });
   if(error){ authMsg(error.message,1); return; }
   const { data:{ session:s } } = await sb.auth.getSession(); session=s;
-  $("#auth").classList.add("hidden"); await enterApp();
+  if(await ensureAAL()){ $("#auth").classList.add("hidden"); await enterApp(); }
 }
 async function signUp(){
   const { data, error } = await sb.auth.signUp({ email:$("#authEmail").value.trim(), password:$("#authPass").value });
@@ -1292,7 +1293,6 @@ async function askAI(preset){
    Settings + Integrations
    ============================================================ */
 const INTEGRATIONS=[
-  ["Plaid","Bank & card sync","Requires a Plaid developer account and contract; balances then flow into Assets automatically."],
   ["QuickBooks","Business P&L sync","OAuth app approval required from Intuit."],
   ["Fidelity / Schwab / Vanguard","Brokerage positions","Aggregated via Plaid Investments or SnapTrade."],
   ["Robinhood / Coinbase","Trading & crypto","Coinbase has a public API; Robinhood via aggregators only."],
@@ -1304,7 +1304,21 @@ const INTEGRATIONS=[
 
 function renderSettings(){
   const hh=(DB.households||[])[0];
+  const banks = DB.plaid_items||[];
   return topbar("Settings","Household, security & integrations") + `
+  <div class="card" style="margin-bottom:16px"><h3>Bank connections</h3>
+    <div style="font-size:13px;color:var(--mute);margin-bottom:12px">Live balances sync into Net Worth and Liabilities via Plaid. Free Trial plan covers up to 10 institutions.</div>
+    ${banks.length? banks.map(b=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+        <b>${esc(b.institution_name||"Bank")}</b>
+        <span class="pill">synced ${b.last_synced? fmtDate(b.last_synced.slice(0,10)):"never"}</span>
+        <div class="spacer"></div>
+        <button class="btn sm ghost danger" onclick="removeBank('${esc(b.item_id)}')">Disconnect</button></div>`).join("")
+      : `<div style="font-size:13px;color:var(--dim);margin-bottom:8px">No banks connected yet.</div>`}
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn gold" onclick="connectBank()">${IC.plus} Connect a bank</button>
+      ${banks.length?`<button class="btn" onclick="syncBanks()">Sync balances now</button>`:""}
+    </div>
+  </div>
   <div class="grid g2">
     <div class="card"><h3>Household</h3>
       <label>Household name</label>
@@ -1318,7 +1332,7 @@ function renderSettings(){
         • Row-level security isolates every household's data at the database layer.<br>
         • The document vault is a private bucket; links are signed and expire in 5 minutes.<br>
         • Every create / update / delete is written to the audit log.<br>
-        • <b style="color:var(--text)">MFA:</b> enable TOTP in Supabase Dashboard → Authentication → MFA, then enroll from any Supabase-MFA client. Email confirmation is on by default.<br>
+        • <b style="color:var(--text)">Two-factor sign-in:</b> <span id="mfaRow">checking…</span><br>
         • <b style="color:var(--text)">Backups:</b> Supabase runs daily automatic backups on paid plans; the CSV export is your portable copy.
       </div>
     </div>
@@ -1330,6 +1344,10 @@ function renderSettings(){
       <div style="font-size:12px;color:var(--mute)">${i[2]}</div>
       <span class="pill" style="margin-top:10px;display:inline-block">Requires API credentials</span></div>`).join("")}
   </div>
+  ${(()=>{onRendered(async()=>{const el=$("#mfaRow");if(!el)return;const on=await mfaStatus();
+    el.innerHTML = on
+      ? `<b class="up">Enabled ✓</b> &nbsp;<button class="btn sm ghost danger" onclick="disableMFA()">Disable</button>`
+      : `Off — <button class="btn sm" onclick="startMFAEnroll()">Enable two-factor</button> <span style="color:var(--dim)">(requires TOTP switched on in Supabase → Authentication → Multi-Factor)</span>`;});return "";})()}
   <div class="card" style="margin-top:16px"><h3>Audit trail</h3>
     <div style="font-size:12.5px;color:var(--mute)">Recent activity is stored in the <span class="mono">whq_audit_logs</span> table (Supabase → Table Editor) with user, action, entity and timestamp.</div>
   </div>`;
@@ -1339,6 +1357,144 @@ async function saveHH(){
   const name=$("#hhName").value.trim()||"My Family Office";
   await sb.from(TBL("households")).update({name}).eq("id",HH);
   hhNameCache=name; toast("Saved ✓");
+}
+
+/* ============================================================
+   Plaid — bank connections
+   ============================================================ */
+function authHeaders(){ return { "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token }; }
+async function pfn(name, body){
+  const r = await fetch("/.netlify/functions/"+name,{method:"POST",headers:authHeaders(),body:JSON.stringify({household_id:HH,...body})});
+  const j = await r.json();
+  if(!r.ok || j.error) throw new Error(j.error||("HTTP "+r.status));
+  return j;
+}
+function loadPlaidScript(){
+  return new Promise((res,rej)=>{
+    if(window.Plaid) return res();
+    const sc=document.createElement("script");
+    sc.src="https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+    sc.onload=res; sc.onerror=()=>rej(new Error("Could not load Plaid"));
+    document.head.appendChild(sc);
+  });
+}
+async function connectBank(){
+  try{
+    toast("Opening secure bank link…");
+    await loadPlaidScript();
+    const { link_token } = await pfn("plaid-link-token",{});
+    window.Plaid.create({
+      token: link_token,
+      onSuccess: async (public_token, meta)=>{
+        try{
+          toast("Linking "+((meta.institution&&meta.institution.name)||"bank")+"…");
+          await pfn("plaid-exchange",{ public_token, institution_name: meta.institution? meta.institution.name : "Bank" });
+          await syncBanks();
+        }catch(e){ toast("Link failed: "+e.message); }
+      },
+      onExit: (err)=>{ if(err) toast("Bank link closed: "+(err.display_message||err.error_code||"")); }
+    }).open();
+  }catch(e){ toast("Error: "+e.message); }
+}
+async function syncBanks(){
+  try{
+    toast("Syncing balances…");
+    const j = await pfn("plaid-sync",{});
+    await reload("assets"); await reload("liabilities"); await reload("plaid_items");
+    await snapshotToday(); render();
+    toast(j.synced? `Synced ${j.synced} accounts ✓` : (j.message||"Nothing to sync"));
+    if(j.skipped) toast(j.skipped+" bank(s) need re-login — disconnect and reconnect them");
+  }catch(e){ toast("Sync error: "+e.message); }
+}
+async function removeBank(item_id){
+  if(!confirm("Disconnect this bank? Synced accounts stay in your ledger but stop updating.")) return;
+  try{
+    await pfn("plaid-remove",{ item_id });
+    await reload("plaid_items"); render(); toast("Disconnected");
+  }catch(e){ toast("Error: "+e.message); }
+}
+
+/* ============================================================
+   Two-factor authentication (TOTP via Supabase MFA)
+   ============================================================ */
+async function ensureAAL(){
+  try{
+    const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    if(data && data.nextLevel === "aal2" && data.currentLevel !== "aal2"){ showMFAChallenge(); return false; }
+  }catch(e){ /* MFA not enabled in this project — proceed */ }
+  return true;
+}
+function showMFAChallenge(){
+  $("#app").classList.remove("on");
+  $("#auth").classList.remove("hidden");
+  document.querySelector("#auth .authcard").innerHTML = `
+    <h1>Two-factor check</h1>
+    <p>Enter the 6-digit code from your authenticator app.</p>
+    <div class="fld"><label>Code</label>
+      <input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"
+             onkeydown="if(event.key==='Enter')verifyMFAChallenge()"></div>
+    <button class="btn gold" style="width:100%;justify-content:center" onclick="verifyMFAChallenge()">Verify</button>
+    <div id="authMsg" class="authmsg"></div>`;
+  setTimeout(()=>{ const i=$("#mfaCode"); if(i) i.focus(); }, 60);
+}
+async function verifyMFAChallenge(){
+  const code = $("#mfaCode").value.trim();
+  if(code.length !== 6){ authMsg("Enter the 6-digit code.", 1); return; }
+  const { data:f } = await sb.auth.mfa.listFactors();
+  const factor = (f && (f.totp||[]).find(x=>x.status==="verified")) || (f && f.totp && f.totp[0]);
+  if(!factor){ authMsg("No authenticator is enrolled on this account.", 1); return; }
+  const { data:ch, error:e1 } = await sb.auth.mfa.challenge({ factorId: factor.id });
+  if(e1){ authMsg(e1.message, 1); return; }
+  const { error:e2 } = await sb.auth.mfa.verify({ factorId: factor.id, challengeId: ch.id, code });
+  if(e2){ authMsg("That code didn't match — try the next one.", 1); return; }
+  const { data:{ session:s } } = await sb.auth.getSession(); if(s) session = s;
+  $("#auth").classList.add("hidden"); await enterApp();
+}
+async function mfaStatus(){
+  try{
+    const { data } = await sb.auth.mfa.listFactors();
+    return (data && (data.totp||[]).some(x=>x.status==="verified"));
+  }catch(e){ return false; }
+}
+async function startMFAEnroll(){
+  const { data, error } = await sb.auth.mfa.enroll({ factorType:"totp", friendlyName:"WealthHQ" });
+  if(error){
+    toast(error.message.includes("not enabled") ? "Enable TOTP first: Supabase → Authentication → Multi-Factor" : error.message);
+    return;
+  }
+  window._enrollFactorId = data.id;
+  $("#modalHost").innerHTML = `<div class="overlay" onclick="if(event.target===this)cancelMFAEnroll()">
+    <div class="modal" style="width:440px">
+      <h2>Enable two-factor</h2>
+      <p style="font-size:13.5px;color:var(--mute);margin-bottom:14px">Scan with Google Authenticator, 1Password, Authy, or any TOTP app, then enter the code it shows.</p>
+      <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;justify-content:center">${data.totp.qr_code}</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin:10px 0 16px;word-break:break-all">Manual key: ${esc(data.totp.secret)}</div>
+      <label>6-digit code</label>
+      <input id="enrollCode" inputmode="numeric" maxlength="6" placeholder="123456" onkeydown="if(event.key==='Enter')verifyMFAEnroll()">
+      <div class="mfoot">
+        <button class="btn ghost" onclick="cancelMFAEnroll()">Cancel</button>
+        <button class="btn gold" onclick="verifyMFAEnroll()">Turn on</button>
+      </div></div></div>`;
+}
+async function cancelMFAEnroll(){
+  if(window._enrollFactorId){ try{ await sb.auth.mfa.unenroll({ factorId: window._enrollFactorId }); }catch(e){} }
+  window._enrollFactorId = null; closeModal();
+}
+async function verifyMFAEnroll(){
+  const code = $("#enrollCode").value.trim();
+  const fid = window._enrollFactorId;
+  const { data:ch, error:e1 } = await sb.auth.mfa.challenge({ factorId: fid });
+  if(e1){ toast(e1.message); return; }
+  const { error:e2 } = await sb.auth.mfa.verify({ factorId: fid, challengeId: ch.id, code });
+  if(e2){ toast("Code didn't match — try again"); return; }
+  window._enrollFactorId = null;
+  closeModal(); render(); toast("Two-factor enabled ✓");
+}
+async function disableMFA(){
+  if(!confirm("Turn off two-factor authentication?")) return;
+  const { data } = await sb.auth.mfa.listFactors();
+  for(const f of ((data && data.totp) || [])){ await sb.auth.mfa.unenroll({ factorId: f.id }); }
+  render(); toast("Two-factor disabled");
 }
 
 /* ---------- go ---------- */
