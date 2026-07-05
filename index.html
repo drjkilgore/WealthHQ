@@ -504,7 +504,8 @@ const MODS = {
     fields:[
       {k:"category",l:"Category",t:"text",req:1},
       {k:"scope",l:"Scope",t:"select",opts:()=>["Personal"].concat((DB.businesses||[]).map(b=>b.name)),req:1},
-      {k:"monthly_limit",l:"Monthly budget",t:"money",req:1},
+      {k:"kind",l:"Kind",t:"select",opts:["Expense","Income"],req:1},
+      {k:"monthly_limit",l:"Monthly amount",t:"money",req:1},
       {k:"notes",l:"Notes",t:"area",full:1}],
     nameField:"category"
   }
@@ -1037,38 +1038,49 @@ function goalCards(rows){
 }
 
 /* ---------- Budgets view ---------- */
-function monthSpent(category){
+function monthTx(category, kind){
   const ym = today().slice(0,7);
   return (DB.transactions||[])
-    .filter(t=>t.tx_type==="Expense" && String(t.tx_date).startsWith(ym)
+    .filter(t=>t.tx_type===kind && String(t.tx_date).startsWith(ym)
             && String(t.category||"").trim().toLowerCase() === String(category).trim().toLowerCase())
     .reduce((s,t)=>s+n(t.amount),0);
 }
 function budgetsView(rows){
-  if(!rows.length) return `<div class="empty"><b>No budgets yet</b>Add a budget line — Personal lines track against this month's Transactions by category; business lines track against the company's expense run-rate from QuickBooks.</div>`;
+  const importBtn = `<div class="no-print" style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
+    <label class="btn" style="position:relative;overflow:hidden">Import file
+      <input type="file" accept=".csv,.xlsx" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="importBudgets(this)"></label>
+    <span style="font-size:12px;color:var(--dim)">Excel or CSV — columns: Scope, Category, Kind, Monthly Budget, Notes</span></div>`;
+  if(!rows.length) return importBtn + `<div class="empty"><b>No budgets yet</b>Add lines one at a time, or fill the Excel template and import it. Income lines (e.g., Salary) track your paychecks; Expense lines track spending by category.</div>`;
   const monthName = new Date().toLocaleDateString("en-US",{month:"long",year:"numeric"});
   const groups = {};
   rows.forEach(r=>{ (groups[r.scope||"Personal"]=groups[r.scope||"Personal"]||[]).push(r); });
   const order = ["Personal"].concat(Object.keys(groups).filter(g=>g!=="Personal").sort());
-  return order.filter(g=>groups[g]).map(g=>{
+  return importBtn + order.filter(g=>groups[g]).map(g=>{
     const rs = groups[g];
-    const totLimit = rs.reduce((s,r)=>s+n(r.monthly_limit),0);
-    let header, lines;
     if(g==="Personal"){
-      const totSpent = rs.reduce((s,r)=>s+monthSpent(r.category),0);
-      header = groupBar(g+" — "+monthName, totSpent, totLimit);
-      lines = rs.map(r=>{ const spent=monthSpent(r.category); return lineBar(r, r.category, spent, n(r.monthly_limit),
-        spent===0? "No expenses logged this month — log Transactions with category \""+esc(r.category)+"\"" : null); }).join("");
-    } else {
-      const biz = (DB.businesses||[]).find(b=>b.name===g);
-      const runRate = biz? n(biz.expenses_ttm)/12 : 0;
-      header = groupBar(g+" — monthly run-rate vs total budget", runRate, totLimit,
-        "Run-rate = expenses (TTM) ÷ 12 from the business card"+(biz&&biz.expenses_ttm?"":" — sync QuickBooks to populate"));
-      lines = rs.map(r=>lineBar(r, r.category, null, n(r.monthly_limit),
-        "Per-category business actuals arrive with QuickBooks P&L detail (future upgrade)")).join("");
+      const inc = rs.filter(r=>r.kind==="Income"), exp = rs.filter(r=>r.kind!=="Income");
+      const incPlan = inc.reduce((s,r)=>s+n(r.monthly_limit),0), incAct = inc.reduce((s,r)=>s+monthTx(r.category,"Income"),0);
+      const expPlan = exp.reduce((s,r)=>s+n(r.monthly_limit),0), expAct = exp.reduce((s,r)=>s+monthTx(r.category,"Expense"),0);
+      return `<div class="grp">Personal — ${monthName} <span class="mono">planned net ${fmt$(incPlan-expPlan)}/mo · actual net ${fmt$(incAct-expAct)}</span></div>
+        <div class="card">
+          ${inc.length? `<h3>Income</h3>${groupBar("Expected income", incAct, incPlan, incAct<incPlan? "Log paychecks in Transactions (type Income, matching category)":null)}
+            ${inc.map(r=>lineBar(r, r.category, monthTx(r.category,"Income"), n(r.monthly_limit), null, true)).join("")}
+            <div style="height:14px"></div>`:""}
+          <h3>Spending</h3>${groupBar("Total spending", expAct, expPlan)}
+          ${exp.map(r=>{const a=monthTx(r.category,"Expense"); return lineBar(r, r.category, a, n(r.monthly_limit),
+            a===0? "No expenses logged this month with category \""+esc(r.category)+"\"":null);}).join("")}
+        </div>`;
     }
+    const biz = (DB.businesses||[]).find(b=>b.name===g);
+    const runRate = biz? n(biz.expenses_ttm)/12 : 0;
+    const totLimit = rs.reduce((s,r)=>s+n(r.monthly_limit),0);
     return `<div class="grp">${esc(g)} <span class="mono">${fmt$(totLimit)}/mo budgeted</span></div>
-      <div class="card">${header}${lines}</div>`;
+      <div class="card">
+        ${groupBar("Monthly expense run-rate vs total budget", runRate, totLimit,
+          "Run-rate = expenses (TTM) ÷ 12 from the business card"+(biz&&biz.expenses_ttm?"":" — sync QuickBooks to populate"))}
+        ${rs.map(r=>lineBar(r, r.category, null, n(r.monthly_limit),
+          "Per-category business actuals arrive with QuickBooks P&L detail (future upgrade)")).join("")}
+      </div>`;
   }).join("");
 }
 function groupBar(label, actual, limit, note){
@@ -1082,10 +1094,10 @@ function groupBar(label, actual, limit, note){
     ${note?`<div style="font-size:11.5px;color:var(--dim)">${note}</div>`:""}
   </div>`;
 }
-function lineBar(r, label, actual, limit, note){
+function lineBar(r, label, actual, limit, note, isIncome){
   const has = actual!==null;
   const pct = has&&limit? Math.min(100, actual/limit*100) : 0;
-  const over = has && limit && actual>limit;
+  const over = has && limit && actual>limit && !isIncome;   // over-earning is not red
   return `<div style="padding:8px 0;cursor:pointer" onclick="openForm('budgets','${r.id}')">
     <div style="display:flex;justify-content:space-between;font-size:13px">
       <span>${esc(label)}</span>
@@ -1093,6 +1105,45 @@ function lineBar(r, label, actual, limit, note){
     ${has?`<div class="bar" style="margin:6px 0 2px"><i style="width:${pct}%;${over?"background:var(--down)":""}"></i></div>`:""}
     ${note?`<div style="font-size:11px;color:var(--dim)">${note}</div>`:""}
   </div>`;
+}
+function loadSheetJS(){
+  return new Promise((res,rej)=>{
+    if(window.XLSX) return res();
+    const sc=document.createElement("script");
+    sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    sc.onload=res; sc.onerror=()=>rej(new Error("Could not load spreadsheet reader"));
+    document.head.appendChild(sc);
+  });
+}
+async function importBudgets(inp){
+  const file = inp.files[0]; if(!file) return;
+  toast("Reading file…");
+  try{
+    let rows;
+    await loadSheetJS();
+    const buf = await file.arrayBuffer();
+    const wbk = XLSX.read(buf, { type:"array" });
+    const sheet = wbk.Sheets[wbk.SheetNames.includes("Budget")? "Budget" : wbk.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(sheet, { defval:"" });
+    const scopes = ["personal"].concat((DB.businesses||[]).map(b=>b.name.toLowerCase()));
+    const recs = [], skipped = [];
+    for(const r of rows){
+      const get=(...keys)=>{ for(const k of keys){ const hit=Object.keys(r).find(x=>x.trim().toLowerCase()===k); if(hit!==undefined && r[hit]!=="") return r[hit]; } return ""; };
+      const category = String(get("category")).trim();
+      const limit = parseFloat(String(get("monthly budget","monthly amount","budget","amount")).replace(/[$,]/g,""));
+      if(!category || !isFinite(limit) || limit<=0){ if(category||limit) skipped.push(category||"(blank)"); continue; }
+      let scope = String(get("scope")||"Personal").trim();
+      const match = (DB.businesses||[]).find(b=>b.name.toLowerCase()===scope.toLowerCase());
+      scope = match? match.name : (scope.toLowerCase()==="personal"? "Personal" : (scopes.includes(scope.toLowerCase())? scope : "Personal"));
+      let kind = String(get("kind")||"Expense").trim().toLowerCase()==="income" ? "Income" : "Expense";
+      recs.push({ household_id:HH, scope, category, kind, monthly_limit:limit, notes:String(get("notes")).trim()||null });
+    }
+    if(!recs.length){ toast("No valid rows found — check the column headers match the template"); return; }
+    const { error } = await sb.from(TBL("budgets")).insert(recs);
+    if(error){ toast("Import error: "+error.message); return; }
+    await reload("budgets"); render();
+    toast(`Imported ${recs.length} budget line${recs.length===1?"":"s"} ✓`+(skipped.length? ` (${skipped.length} skipped)`:""));
+  }catch(e){ toast("Import failed: "+e.message); }
 }
 
 /* ---------- Investments view (table + charts) ---------- */
