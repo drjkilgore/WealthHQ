@@ -211,9 +211,11 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 /* ============================================================
    WealthHQ — configuration
    ============================================================ */
-const SUPABASE_URL = "YOUR_SUPABASE_URL";        // e.g. https://xxxx.supabase.co
-const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const SUPABASE_URL = "https://msojmpxesbyegbxloday.supabase.co";        // e.g. https://xxxx.supabase.co
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zb2ptcHhlc2J5ZWdieGxvZGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxMzQ5NTgsImV4cCI6MjA5NTcxMDk1OH0.SBfypZfTcR5NO8q76ImnGug7WpWJnOgAt1kWZYPqAbo";
 const AI_ENDPOINT = "/.netlify/functions/ai-advisor";
+const TBL = t => "whq_" + t;            // all WealthHQ tables are namespaced
+const VAULT_BUCKET = "whq-vault";
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -607,27 +609,27 @@ function authMsg(m,err){ const e=$("#authMsg"); e.textContent=m; e.className="au
 
 async function enterApp(){
   // find or create household
-  let { data:mem } = await sb.from("household_members").select("household_id").eq("user_id", session.user.id).limit(1);
+  let { data:mem } = await sb.from(TBL("household_members")).select("household_id").eq("user_id", session.user.id).limit(1);
   if(!mem || !mem.length){
-    const { data:hh, error:e1 } = await sb.from("households")
+    const { data:hh, error:e1 } = await sb.from(TBL("households"))
       .insert({ name:"My Family Office", created_by:session.user.id }).select().single();
     if(e1){ toast("Setup error: "+e1.message); return; }
-    await sb.from("household_members").insert({ household_id:hh.id, user_id:session.user.id, role:"owner" });
+    await sb.from(TBL("household_members")).insert({ household_id:hh.id, user_id:session.user.id, role:"owner" });
     HH = hh.id;
     // seed businesses + starter goals
-    await sb.from("businesses").insert([
+    await sb.from(TBL("businesses")).insert([
       { household_id:HH, name:"#TEACH", entity_type:"LLC", notes:"Training Educators and Creating Hope — alternative teacher certification (AL, AZ, IN, MI, NC)." },
       { household_id:HH, name:"J3 Productions", entity_type:"LLC", notes:"Live events production." },
       { household_id:HH, name:"EdConsult LLC", entity_type:"LLC", notes:"Consulting + Prova platform development." }
     ]);
-    await sb.from("goals").insert([
+    await sb.from(TBL("goals")).insert([
       { household_id:HH, name:"Net Worth $5M", metric:"Net Worth", target_amount:5000000 },
       { household_id:HH, name:"Net Worth $10M", metric:"Net Worth", target_amount:10000000 },
       { household_id:HH, name:"Passive Income $500K/yr", metric:"Passive Income", target_amount:500000 }
     ]);
   } else HH = mem[0].household_id;
 
-  const { data:hhRow } = await sb.from("households").select("name").eq("id",HH).single();
+  const { data:hhRow } = await sb.from(TBL("households")).select("name").eq("id",HH).single();
   hhNameCache = hhRow ? hhRow.name : "My Family Office";
 
   await loadAll();
@@ -640,25 +642,25 @@ async function loadAll(){
   await Promise.all(TABLES.map(async t=>{
     const order = t==="net_worth_snapshots"?"snap_date":(t==="transactions"?"tx_date":"created_at");
     const asc = t==="net_worth_snapshots";
-    const { data, error } = await sb.from(t).select("*").eq("household_id",HH).order(order,{ascending:asc}).limit(1000);
+    const { data, error } = await sb.from(TBL(t)).select("*").eq("household_id",HH).order(order,{ascending:asc}).limit(1000);
     if(error) console.warn(t,error.message);
     DB[t]=data||[];
   }));
 }
 async function reload(t){ 
   const order = t==="net_worth_snapshots"?"snap_date":(t==="transactions"?"tx_date":"created_at");
-  const { data } = await sb.from(t).select("*").eq("household_id",HH).order(order,{ascending:t==="net_worth_snapshots"}).limit(1000);
+  const { data } = await sb.from(TBL(t)).select("*").eq("household_id",HH).order(order,{ascending:t==="net_worth_snapshots"}).limit(1000);
   DB[t]=data||[];
 }
 async function snapshotToday(){
   const t=totals();
-  await sb.from("net_worth_snapshots").upsert(
+  await sb.from(TBL("net_worth_snapshots")).upsert(
     { household_id:HH, snap_date:today(), assets_total:t.assetsTotal, liabilities_total:t.liab, net_worth:t.net },
     { onConflict:"household_id,snap_date" });
   await reload("net_worth_snapshots");
 }
 async function audit(action, entity, id){
-  sb.from("audit_logs").insert({household_id:HH,user_id:session.user.id,action,entity,entity_id:id||null}).then(()=>{});
+  sb.from(TBL("audit_logs")).insert({household_id:HH,user_id:session.user.id,action,entity,entity_id:id||null}).then(()=>{});
 }
 
 /* ============================================================
@@ -1065,7 +1067,7 @@ async function saveRow(key,id){
     if(fl.req && (v===null||v==="")){ toast(fl.l+" is required"); return; }
     rec[fl.k]=v===""?null:v;
   }
-  const q = id? sb.from(m.table).update(rec).eq("id",id) : sb.from(m.table).insert(rec);
+  const q = id? sb.from(TBL(m.table)).update(rec).eq("id",id) : sb.from(TBL(m.table)).insert(rec);
   const { error } = await q;
   if(error){ toast("Error: "+error.message); return; }
   audit(id?"update":"create", m.table, id);
@@ -1075,7 +1077,7 @@ async function saveRow(key,id){
 async function delRow(key,id){
   if(!confirm("Delete permanently?")) return;
   const m=MODS[key];
-  const { error } = await sb.from(m.table).delete().eq("id",id);
+  const { error } = await sb.from(TBL(m.table)).delete().eq("id",id);
   if(error){ toast("Error: "+error.message); return; }
   audit("delete", m.table, id);
   await reload(m.table); await snapshotToday();
@@ -1110,23 +1112,23 @@ async function uploadDoc(inp){
   const cat=$("#upCat").value;
   const path=`${HH}/${cat}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g,"_")}`;
   toast("Uploading…");
-  const { error } = await sb.storage.from("vault").upload(path,file);
+  const { error } = await sb.storage.from(VAULT_BUCKET).upload(path,file);
   if(error){ toast("Upload failed: "+error.message); return; }
-  await sb.from("documents").insert({household_id:HH,name:file.name,category:cat,storage_path:path,size_bytes:file.size,uploaded_by:session.user.id});
+  await sb.from(TBL("documents")).insert({household_id:HH,name:file.name,category:cat,storage_path:path,size_bytes:file.size,uploaded_by:session.user.id});
   audit("upload","documents");
   await reload("documents"); render(); toast("Uploaded ✓");
 }
 async function downloadDoc(id){
   const d=(DB.documents||[]).find(x=>x.id===id); if(!d) return;
-  const { data, error } = await sb.storage.from("vault").createSignedUrl(d.storage_path, 300);
+  const { data, error } = await sb.storage.from(VAULT_BUCKET).createSignedUrl(d.storage_path, 300);
   if(error){ toast(error.message); return; }
   window.open(data.signedUrl,"_blank");
 }
 async function deleteDoc(id){
   if(!confirm("Delete this document?")) return;
   const d=(DB.documents||[]).find(x=>x.id===id);
-  await sb.storage.from("vault").remove([d.storage_path]);
-  await sb.from("documents").delete().eq("id",id);
+  await sb.storage.from(VAULT_BUCKET).remove([d.storage_path]);
+  await sb.from(TBL("documents")).delete().eq("id",id);
   await reload("documents"); render(); toast("Deleted");
 }
 
@@ -1279,7 +1281,7 @@ async function askAI(preset){
     const ans=data.answer||("Error: "+(data.error||"no response"));
     $("#aiPending").textContent=ans;
     aiHistory.push({role:"assistant",content:ans});
-    sb.from("ai_logs").insert({household_id:HH,user_id:session.user.id,question:q,answer:ans}).then(()=>{});
+    sb.from(TBL("ai_logs")).insert({household_id:HH,user_id:session.user.id,question:q,answer:ans}).then(()=>{});
   }catch(e){
     $("#aiPending").textContent="Could not reach the advisor. If running locally, the Netlify function only works on the deployed site. Error: "+e.message;
   }
@@ -1329,13 +1331,13 @@ function renderSettings(){
       <span class="pill" style="margin-top:10px;display:inline-block">Requires API credentials</span></div>`).join("")}
   </div>
   <div class="card" style="margin-top:16px"><h3>Audit trail</h3>
-    <div style="font-size:12.5px;color:var(--mute)">Recent activity is stored in the <span class="mono">audit_logs</span> table (Supabase → Table Editor) with user, action, entity and timestamp.</div>
+    <div style="font-size:12.5px;color:var(--mute)">Recent activity is stored in the <span class="mono">whq_audit_logs</span> table (Supabase → Table Editor) with user, action, entity and timestamp.</div>
   </div>`;
 }
 let hhNameCache=null;
 async function saveHH(){
   const name=$("#hhName").value.trim()||"My Family Office";
-  await sb.from("households").update({name}).eq("id",HH);
+  await sb.from(TBL("households")).update({name}).eq("id",HH);
   hhNameCache=name; toast("Saved ✓");
 }
 
