@@ -499,7 +499,7 @@ const MODS = {
       {l:"Phone",v:r=>`<span class="mono">${esc(r.phone||"—")}</span>`}]
   }
 };
-const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots","plaid_items","invites"];
+const TABLES = ["assets","liabilities","properties","vehicles","holdings","businesses","events","transactions","goals","insurance_policies","estate_records","documents","contacts","net_worth_snapshots","plaid_items","invites","qb_connections"];
 
 /* ---------- payoff estimate: n = -ln(1 - rB/P) / ln(1+r) ---------- */
 function estPayoff(r){
@@ -623,7 +623,7 @@ async function enterApp(){
         const { data:hhRow2 } = await sb.from(TBL("households")).select("name").eq("id",HH).single();
         hhNameCache = hhRow2 ? hhRow2.name : "My Family Office";
         await loadAll(); await snapshotToday();
-        $("#app").classList.add("on"); renderRail(); render(); resumePlaidOAuth();
+        $("#app").classList.add("on"); renderRail(); render(); resumePlaidOAuth(); handleQBReturn();
         return;
       }
     }
@@ -653,6 +653,7 @@ async function enterApp(){
   $("#app").classList.add("on");
   renderRail(); render();
   resumePlaidOAuth();
+  handleQBReturn();
 }
 
 async function loadAll(){
@@ -1309,14 +1310,12 @@ async function askAI(preset){
    Settings + Integrations
    ============================================================ */
 const INTEGRATIONS=[
-  ["QuickBooks","Business P&L sync","OAuth app approval required from Intuit."],
-  ["Fidelity / Schwab / Vanguard","Brokerage positions","Aggregated via Plaid Investments or SnapTrade."],
-  ["Robinhood / Coinbase","Trading & crypto","Coinbase has a public API; Robinhood via aggregators only."],
-  ["Stripe / PayPal / Venmo","Business receipts","Stripe API keys per business; webhook → transactions."],
-  ["Zillow","Property Zestimates","Bridge API access required; manual value updates work today."],
-  ["Kelley Blue Book","Vehicle values","No public API; update values manually or via VIN services."],
-  ["Google Calendar / Drive, Dropbox, OneDrive","Docs & schedule","OAuth per provider; Vault covers storage today."],
-  ["Rocket Money","Subscriptions","No public API; log as recurring transactions."]];
+  ["Banks & brokerages","LIVE via Plaid","Chase, Morgan Stanley, Fidelity, Schwab, Vanguard, Coinbase, Acorns and 11,000+ others — use Bank connections above."],
+  ["QuickBooks Online","LIVE","Connect above; syncs revenue, expenses, cash, A/R, A/P and debt per business."],
+  ["Stripe","Buildable next","Webhook → auto-log J3 ticket revenue as transactions. Needs your Stripe API key."],
+  ["Zillow / Kelley Blue Book","Manual by design","No individual API access; refresh property and vehicle values ~every 6 months."],
+  ["Google Drive / Dropbox / OneDrive","Covered by Vault","Documents live in the encrypted Vault; external drives unnecessary."],
+  ["Rocket Money","Not available","No public API; log subscriptions as recurring transactions."]];
 
 function renderSettings(){
   const hh=(DB.households||[])[0];
@@ -1333,6 +1332,25 @@ function renderSettings(){
     <div style="display:flex;gap:10px;margin-top:14px">
       <button class="btn gold" onclick="connectBank()">${IC.plus} Connect a bank</button>
       ${banks.length?`<button class="btn" onclick="syncBanks()">Sync balances now</button>`:""}
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px"><h3>QuickBooks — business financials</h3>
+    <div style="font-size:13px;color:var(--mute);margin-bottom:12px">Connect each QuickBooks Online company and assign it to a business. Sync fills revenue, expenses, cash, A/R, A/P, and debt on the business card (EBITDA and valuation multiple stay yours to set).</div>
+    ${(DB.qb_connections||[]).length? (DB.qb_connections||[]).map(c=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+        <b>${esc(c.company_name||"QuickBooks company")}</b>
+        <span class="pill">synced ${c.last_synced? fmtDate(c.last_synced.slice(0,10)):"never"}</span>
+        <select onchange="qbAssign('${esc(c.realm_id)}', this.value)" style="width:200px">
+          <option value="">— assign to business —</option>
+          ${(DB.businesses||[]).map(b=>`<option value="${b.id}" ${c.business_id===b.id?"selected":""}>${esc(b.name)}</option>`).join("")}
+        </select>
+        <div class="spacer"></div>
+        <button class="btn sm ghost danger" onclick="qbRemove('${esc(c.realm_id)}')">Disconnect</button>
+      </div>`).join("")
+    : `<div style="font-size:13px;color:var(--dim);margin-bottom:8px">No QuickBooks companies connected yet.</div>`}
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn gold" onclick="qbConnect()">${IC.plus} Connect QuickBooks</button>
+      ${(DB.qb_connections||[]).some(c=>c.business_id)?`<button class="btn" onclick="qbSync()">Sync financials now</button>`:""}
     </div>
   </div>
   <div class="grid g2">
@@ -1373,7 +1391,7 @@ function renderSettings(){
     ${INTEGRATIONS.map(i=>`<div class="card"><h3>${i[0]}</h3>
       <div style="font-size:13px;margin-bottom:6px">${i[1]}</div>
       <div style="font-size:12px;color:var(--mute)">${i[2]}</div>
-      <span class="pill" style="margin-top:10px;display:inline-block">Requires API credentials</span></div>`).join("")}
+      </div>`).join("")}
   </div>
   ${(()=>{onRendered(async()=>{const el=$("#mfaRow");if(!el)return;const on=await mfaStatus();
     el.innerHTML = on
@@ -1568,6 +1586,45 @@ async function disableMFA(){
   const { data } = await sb.auth.mfa.listFactors();
   for(const f of ((data && data.totp) || [])){ await sb.auth.mfa.unenroll({ factorId: f.id }); }
   render(); toast("Two-factor disabled");
+}
+
+async function qbConnect(){
+  try{
+    toast("Opening QuickBooks…");
+    const { url } = await pfn("qb-connect",{});
+    window.location.href = url;   // Intuit authorizes, then redirects back here
+  }catch(e){ toast("Error: "+e.message); }
+}
+async function qbAssign(realm_id, business_id){
+  const { error } = await sb.from(TBL("qb_connections")).update({ business_id: business_id||null }).eq("realm_id", realm_id);
+  if(error){ toast("Error: "+error.message); return; }
+  await reload("qb_connections"); render();
+  toast(business_id? "Assigned — click Sync financials now" : "Assignment cleared");
+}
+async function qbSync(){
+  try{
+    toast("Pulling QuickBooks financials…");
+    const j = await pfn("qb-sync",{});
+    await reload("businesses"); await reload("qb_connections");
+    await snapshotToday(); render();
+    if(j.errors && j.errors.length) toast("Some companies failed: "+j.errors[0]);
+    else toast(j.synced? `Synced ${j.synced} compan${j.synced===1?"y":"ies"} ✓` : (j.message||"Nothing to sync"));
+  }catch(e){ toast("Sync error: "+e.message); }
+}
+async function qbRemove(realm_id){
+  if(!confirm("Disconnect this QuickBooks company? Business figures stay but stop updating.")) return;
+  try{
+    await pfn("qb-remove",{ realm_id });
+    await reload("qb_connections"); render(); toast("Disconnected");
+  }catch(e){ toast("Error: "+e.message); }
+}
+function handleQBReturn(){
+  const q = new URLSearchParams(location.search).get("qb");
+  if(!q) return;
+  history.replaceState({}, "", location.pathname);
+  if(q==="connected"){ go("settings"); toast("QuickBooks connected — assign it to a business, then Sync"); }
+  else if(q==="denied") toast("QuickBooks connection was cancelled");
+  else toast("QuickBooks connection failed — try again");
 }
 
 async function inviteMember(){
