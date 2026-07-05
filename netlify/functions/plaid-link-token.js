@@ -44,13 +44,15 @@ exports.handler = async (event)=>{
   const miss=envCheck(); if(miss) return bad(500,miss);
   try{
     const { userId } = await requireMember(event);
-    const j = await plaid("/link/token/create",{
+    const req = {
       user:{ client_user_id:userId },
       client_name:"WealthHQ",
       products:["transactions"],
       country_codes:["US"],
       language:"en"
-    });
+    };
+    if(process.env.PLAID_REDIRECT_URI) req.redirect_uri = process.env.PLAID_REDIRECT_URI;
+    const j = await plaid("/link/token/create", req);
     return ok({ link_token:j.link_token });
   }catch(e){ return bad(400, e.message); }
 };
