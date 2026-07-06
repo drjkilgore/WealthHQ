@@ -88,6 +88,13 @@ main{overflow-y:auto;padding:26px 34px 60px;scroll-behavior:smooth}
 .grid{display:grid;gap:16px}
 .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
 @media(max-width:1180px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(2,1fr)}}
+.mrow{padding:12px 6px;border-bottom:1px solid rgba(30,42,35,.08);cursor:pointer}
+.mrow:last-child{border-bottom:none}
+.mrow:active{background:rgba(31,111,74,.05)}
+.mtitle{font-weight:600;font-size:14.5px;margin-bottom:7px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px}
+.mgrid .ml{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:1px}
+.mgrid .mv{font-size:13px}
 .menuBtn{display:none!important}
 #navScrim{position:fixed;inset:0;background:rgba(30,42,35,.35);z-index:65;opacity:0;pointer-events:none;transition:opacity .2s}
 #navScrim.on{opacity:1;pointer-events:auto}
@@ -98,6 +105,8 @@ main{overflow-y:auto;padding:26px 34px 60px;scroll-behavior:smooth}
   nav.rail.open{transform:none}
   .menuBtn{display:inline-flex!important}
   main{padding:18px}
+  .card{overflow-x:auto}
+  .report-doc{overflow-x:auto}
   .g2,.g3,.g4{grid-template-columns:1fr}.searchbox{display:none}}
 
 /* ---------- Ledger hero (signature) ---------- */
@@ -954,13 +963,26 @@ function renderModule(key){
   return topbar(m.title, total!==null?`Total ${fmt$(total)}`:"", add) + body;
 }
 
+function isMobile(){ return window.matchMedia("(max-width:760px)").matches; }
 function tableView(key,m,rows){
   if(!rows.length) return emptyState(m);
   const groups={};
   rows.forEach(r=>{const g=m.groupBy? (r[m.groupBy]||"Other"):"__all";(groups[g]=groups[g]||[]).push(r);});
+  const mobile = isMobile();
   return Object.entries(groups).map(([g,rs])=>{
     const sub=m.sumField? fmt$(rs.reduce((s,r)=>s+n(r[m.sumField]),0)):"";
-    return (g!=="__all"?`<div class="grp">${esc(g)} <span class="mono">${sub} · ${rs.length}</span></div>`:"") +
+    const head = (g!=="__all"?`<div class="grp">${esc(g)} <span class="mono">${sub} · ${rs.length}</span></div>`:"");
+    if(mobile){
+      return head + `<div class="card" style="padding:6px 12px">` + rs.map(r=>{
+        const cells = m.cols.map(c=>({l:c.l, v:c.v(r)}));
+        const detail = cells.slice(1).filter(c=>String(c.v)!=="—");
+        return `<div class="mrow" onclick="openForm('${key}','${r.id}')">
+          <div class="mtitle">${cells[0].v}</div>
+          ${detail.length?`<div class="mgrid">${detail.map(c=>`<div><span class="ml">${c.l}</span><span class="mv mono">${c.v}</span></div>`).join("")}</div>`:""}
+        </div>`;
+      }).join("") + `</div>`;
+    }
+    return head +
     `<div class="card" style="padding:6px 4px"><table>
       <tr>${m.cols.map(c=>`<th class="${c.num?"num":""}">${c.l}</th>`).join("")}</tr>
       ${rs.map(r=>`<tr class="row" onclick="openForm('${key}','${r.id}')">${m.cols.map(c=>`<td class="${c.num?"num":""}">${c.v(r)}</td>`).join("")}</tr>`).join("")}
@@ -1788,6 +1810,14 @@ async function revokeInvite(id){
   await sb.from(TBL("invites")).delete().eq("id",id);
   await reload("invites"); render(); toast("Invite revoked");
 }
+
+/* re-render tables when the screen crosses the mobile breakpoint */
+let _wasMobile = null;
+window.addEventListener("resize", ()=>{
+  const m = isMobile();
+  if(_wasMobile === null){ _wasMobile = m; return; }
+  if(m !== _wasMobile){ _wasMobile = m; if(session && HH) render(); }
+});
 
 /* ---------- go ---------- */
 boot();
