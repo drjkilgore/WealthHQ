@@ -81,7 +81,16 @@ main{overflow-y:auto;padding:26px 34px 60px;scroll-behavior:smooth}
 .grid{display:grid;gap:16px}
 .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
 @media(max-width:1180px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:760px){#app.on{grid-template-columns:1fr}nav.rail{display:none}main{padding:18px}
+.menuBtn{display:none!important}
+#navScrim{position:fixed;inset:0;background:rgba(30,42,35,.35);z-index:65;opacity:0;pointer-events:none;transition:opacity .2s}
+#navScrim.on{opacity:1;pointer-events:auto}
+@media(max-width:760px){#app.on{grid-template-columns:1fr}
+  nav.rail{position:fixed;top:0;left:0;bottom:0;width:256px;z-index:70;background:#f4f2ea;
+    transform:translateX(-105%);transition:transform .25s cubic-bezier(.2,.8,.2,1);
+    box-shadow:4px 0 28px rgba(30,42,35,.2)}
+  nav.rail.open{transform:none}
+  .menuBtn{display:inline-flex!important}
+  main{padding:18px}
   .g2,.g3,.g4{grid-template-columns:1fr}.searchbox{display:none}}
 
 /* ---------- Ledger hero (signature) ---------- */
@@ -206,6 +215,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   <main id="main"></main>
 </div>
 
+<div id="navScrim" onclick="toggleNav(false)"></div>
 <div id="toast"></div>
 <div id="modalHost"></div>
 <script>
@@ -723,10 +733,18 @@ function renderRail(){
     NAV.map(x=> x.sec ? `<div class="navsec">${x.sec}</div>` :
       `<button class="navitem ${view===x.k?"active":""}" onclick="go('${x.k}')">${x.i}<span>${x.l}</span></button>`).join("");
 }
-function go(v,arg){ view=v; viewArg=arg||null; renderRail(); render(); $("#main").scrollTop=0; }
+function toggleNav(open){
+  const rail = document.querySelector("nav.rail");
+  if(rail) rail.classList.toggle("open", open);
+  const sc = $("#navScrim"); if(sc) sc.classList.toggle("on", open);
+}
+function go(v,arg){ view=v; viewArg=arg||null; toggleNav(false); renderRail(); render(); $("#main").scrollTop=0; }
 
 function topbar(title, sub, actions=""){
   return `<div class="topbar">
+    <button class="btn ghost menuBtn no-print" onclick="toggleNav(true)" aria-label="Menu" style="padding:8px 10px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:20px;height:20px"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
     <div><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:""}</div>
     <div class="spacer"></div>
     <div class="searchbox no-print">${IC.search}<input placeholder="Search everything…" oninput="globalSearch(this.value)" id="gsearch"></div>
